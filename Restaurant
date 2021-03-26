@@ -1,0 +1,4034 @@
+USE [master]
+GO
+/****** Object:  Database [u_czerepak]    Script Date: 26.03.2021 12:45:55 ******/
+CREATE DATABASE [u_czerepak]
+ CONTAINMENT = NONE
+ ON  PRIMARY 
+( NAME = N'u_czerepak', FILENAME = N'/var/opt/mssql/data/u_czerepak.mdf' , SIZE = 8192KB , MAXSIZE = UNLIMITED, FILEGROWTH = 65536KB )
+ LOG ON 
+( NAME = N'u_czerepak_log', FILENAME = N'/var/opt/mssql/data/u_czerepak_log.ldf' , SIZE = 66048KB , MAXSIZE = 2048GB , FILEGROWTH = 65536KB )
+ WITH CATALOG_COLLATION = DATABASE_DEFAULT
+GO
+ALTER DATABASE [u_czerepak] SET COMPATIBILITY_LEVEL = 150
+GO
+IF (1 = FULLTEXTSERVICEPROPERTY('IsFullTextInstalled'))
+begin
+EXEC [u_czerepak].[dbo].[sp_fulltext_database] @action = 'enable'
+end
+GO
+ALTER DATABASE [u_czerepak] SET ANSI_NULL_DEFAULT OFF 
+GO
+ALTER DATABASE [u_czerepak] SET ANSI_NULLS OFF 
+GO
+ALTER DATABASE [u_czerepak] SET ANSI_PADDING OFF 
+GO
+ALTER DATABASE [u_czerepak] SET ANSI_WARNINGS OFF 
+GO
+ALTER DATABASE [u_czerepak] SET ARITHABORT OFF 
+GO
+ALTER DATABASE [u_czerepak] SET AUTO_CLOSE OFF 
+GO
+ALTER DATABASE [u_czerepak] SET AUTO_SHRINK OFF 
+GO
+ALTER DATABASE [u_czerepak] SET AUTO_UPDATE_STATISTICS ON 
+GO
+ALTER DATABASE [u_czerepak] SET CURSOR_CLOSE_ON_COMMIT OFF 
+GO
+ALTER DATABASE [u_czerepak] SET CURSOR_DEFAULT  GLOBAL 
+GO
+ALTER DATABASE [u_czerepak] SET CONCAT_NULL_YIELDS_NULL OFF 
+GO
+ALTER DATABASE [u_czerepak] SET NUMERIC_ROUNDABORT OFF 
+GO
+ALTER DATABASE [u_czerepak] SET QUOTED_IDENTIFIER OFF 
+GO
+ALTER DATABASE [u_czerepak] SET RECURSIVE_TRIGGERS OFF 
+GO
+ALTER DATABASE [u_czerepak] SET  ENABLE_BROKER 
+GO
+ALTER DATABASE [u_czerepak] SET AUTO_UPDATE_STATISTICS_ASYNC OFF 
+GO
+ALTER DATABASE [u_czerepak] SET DATE_CORRELATION_OPTIMIZATION OFF 
+GO
+ALTER DATABASE [u_czerepak] SET TRUSTWORTHY OFF 
+GO
+ALTER DATABASE [u_czerepak] SET ALLOW_SNAPSHOT_ISOLATION OFF 
+GO
+ALTER DATABASE [u_czerepak] SET PARAMETERIZATION SIMPLE 
+GO
+ALTER DATABASE [u_czerepak] SET READ_COMMITTED_SNAPSHOT OFF 
+GO
+ALTER DATABASE [u_czerepak] SET HONOR_BROKER_PRIORITY OFF 
+GO
+ALTER DATABASE [u_czerepak] SET RECOVERY SIMPLE 
+GO
+ALTER DATABASE [u_czerepak] SET  MULTI_USER 
+GO
+ALTER DATABASE [u_czerepak] SET PAGE_VERIFY CHECKSUM  
+GO
+ALTER DATABASE [u_czerepak] SET DB_CHAINING OFF 
+GO
+ALTER DATABASE [u_czerepak] SET FILESTREAM( NON_TRANSACTED_ACCESS = OFF ) 
+GO
+ALTER DATABASE [u_czerepak] SET TARGET_RECOVERY_TIME = 60 SECONDS 
+GO
+ALTER DATABASE [u_czerepak] SET DELAYED_DURABILITY = DISABLED 
+GO
+ALTER DATABASE [u_czerepak] SET QUERY_STORE = OFF
+GO
+USE [u_czerepak]
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetAverageOrderFromClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+Create FUNCTION [dbo].[f_GetAverageOrderFromClient]
+(
+	@ClientID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @AVG money
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+
+	Set @AVG = (select AVG(dbo.f_GetReducedPrice(OrderID)) from Orders 
+	where ClientID = @ClientID and StatusID = @OSId)
+
+	-- Return the result of the function
+	RETURN @AVG
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCollidingRestriction]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetCollidingRestriction]
+(
+	@TableID int,
+	@StartDate date,
+	@EndDate date
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select RestrictionID From Restrictions
+				Where TableID = @TableID 
+				and ((DATEDIFF(DAY, DateFrom, @EndDate) >= 0 and DATEDIFF(DAY,@StartDate, DateTo) >= 0)
+				))
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyClientByName]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE FUNCTION [dbo].[f_GetCompanyClientByName] 
+(
+	@CompanyName varchar (50),
+	@RestaurantName varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+	RETURN (Select CompanyC.ClientID from [Company Clients] as CompanyC
+			Inner Join [Clients] as C
+			on CompanyC.ClientID = C.ClientID
+			Where CompanyC.CompanyName = @CompanyName and C.RestaurantID = @RestaurantID)
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyClientID]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetCompanyClientID] 
+(
+	@NIP varchar (50),
+	@RestaurantName varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	Declare @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+	RETURN (Select CompanyC.ClientID from [Company Clients] as CompanyC
+			Inner Join [Clients] as C
+			on CompanyC.ClientID = C.ClientID
+			Where CompanyC.NIP = @NIP and C.RestaurantID = @RestaurantID)
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyMonthDiscount]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetCompanyMonthDiscount]
+(
+	@NIP varchar(50),
+	@RestaurantName varchar(50),
+	@FillAnOrderDate date
+)
+RETURNS decimal (18,8)
+AS
+	BEGIN
+		Declare @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		Declare @ClientID int = dbo.f_GetCompanyClientID(@NIP, @RestaurantName)
+		Return (select Value from [Company  Month Discounts] 
+					Where ClientID = @ClientID and Datediff(day, @FillAnOrderDate, [End Date]) >=0 and 
+					Datediff(day, [Start Date], @FillAnOrderDate) >=0)
+
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyMonthDiscountValue]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetCompanyMonthDiscountValue] 
+(
+	@RestaurantID int,
+	@DateFrom date
+)
+RETURNS money
+AS
+BEGIN
+	Declare @Res money
+	SET @Res = (select sum(dbo.f_GetCompanyMonthDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate) * dbo.f_GetNonReducedPrice(O.OrderID)) from Orders as O
+		INNER JOIN [Company Clients] as CC on CC.ClientID = O.ClientID
+		INNER JOIN [Restaurants] as R on R.RestaurantID = O.RestaurantID
+		WHERE (dbo.f_GetCompanyQuarterDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate) <= 
+		(dbo.f_GetNonReducedPrice(O.OrderID) * dbo.f_GetCompanyMonthDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate)) or
+		dbo.f_GetCompanyQuarterDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate) is null) and 
+		O.StatusID = 2 and DATEDIFF(day, @DateFrom, FillAnOrderDate) > 0)
+
+	RETURN @Res
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyQuarterDiscount]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetCompanyQuarterDiscount]
+(
+	@NIP varchar(50),
+	@RestaurantName varchar(50),
+	@FillAnOrderDate date
+)
+RETURNS money
+AS
+	BEGIN
+		Declare @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		Declare @ClientID int = dbo.f_GetCompanyClientID(@NIP, @RestaurantName)
+		Return (select Value from [Company Quarter Discounts]
+					Where ClientID = @ClientID and Datediff(day, @FillAnOrderDate, [End Date]) >=0 and 
+					Datediff(day, [Start Date], @FillAnOrderDate) >=0)
+
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCompanyQuarterDiscountValue]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetCompanyQuarterDiscountValue] 
+(
+	@RestaurantID int,
+	@DateFrom date
+)
+RETURNS money
+AS
+BEGIN
+	Declare @Res money
+	SET @Res = (select sum(dbo.f_GetCompanyQuarterDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate)) from Orders as O
+		INNER JOIN [Company Clients] as CC on CC.ClientID = O.ClientID
+		INNER JOIN [Restaurants] as R on R.RestaurantID = O.RestaurantID
+		WHERE (dbo.f_GetCompanyQuarterDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate) > 
+		(dbo.f_GetNonReducedPrice(O.OrderID) * dbo.f_GetCompanyMonthDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate)) or
+		dbo.f_GetCompanyMonthDiscount(CC.NIP, R.RestaurantName,O.FillAnOrderDate) is null) and 
+		O.StatusID = 2 and DATEDIFF(day, @DateFrom, FillAnOrderDate) > 0)
+
+
+	RETURN @Res
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCurrentDishPrice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE FUNCTION [dbo].[f_GetCurrentDishPrice]
+(
+	@DishID INT,
+	@RestaurantID INT
+)
+RETURNS MONEY
+AS
+	BEGIN
+		RETURN(SELECT Price AS CurrentPrice FROM [DishPrice History]
+				WHERE DishID = @DishID AND 
+				DATEDIFF(DAY, [Start Date],GETDATE()) >= 0 AND
+				DATEDIFF(DAY, [End Date],GETDATE()) <= 0 AND
+				RestaurantID = @RestaurantID)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetDish]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetDish]
+(
+	@DishName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(SELECT DishID FROM Dishes
+				WHERE DishName = @DishName)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetDishCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetDishCategory]
+(
+	@CategoryName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select CategoryID From [Dish Categories]
+								Where CategoryName = @CategoryName)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetDishFromMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetDishFromMenu]
+(
+	@DishName VARCHAR(50),
+	@RestaurantID INT,
+    @FillAnOrderDate date
+)
+RETURNS INT
+AS
+	BEGIN
+		RETURN(SELECT Menu.DishID FROM Menu
+				INNER JOIN Dishes ON Menu.DishID = Dishes.DishID
+				WHERE Dishes.DishName = @DishName AND dbo.Menu.RestaurantID = @RestaurantID AND
+				DATEDIFF(DAY, MEnu.InDate, @FillAnOrderDate) >=0 AND DATEDIFF(DAY, @FillAnOrderDate, menu.OutDate) >=0)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetDishPriceFromOrder]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetDishPriceFromOrder]
+(
+	@OrderID int,
+	@DishID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @RestaurantID int = (select RestaurantID from Orders 
+								where OrderID = @OrderID)
+	Declare @ClientID int = (select ClientID from Orders 
+								where OrderID = @OrderID)
+	RETURN (select DPH.Price from [DishPrice History] as DPH
+							inner join [Orders Details] as OD
+							on OD.DishID = DPH.DishID
+							inner join [Orders] as O
+							on O.OrderID = OD.OrderID
+							where DPH.RestaurantID = @RestaurantID and
+							O.OrderID = @OrderID and datediff(day, DPH.[Start Date], O.FillAnOrderDate) >=0  and 
+							(DPH.[End Date] is null or DATEDIFF(day, O.FillAnOrderDate, DPH.[End Date]) >=0) and
+							DPH.DishID = @DishID)
+
+	
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetEmployee]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetEmployee]
+(
+	@PESEL VARCHAR(50),
+	@RestaurantID int
+)
+RETURNS INT
+AS
+	BEGIN
+		RETURN(SELECT EmployeeID FROM [Employees]
+				WHERE PESEL = @PESEL AND RestaurantID = @RestaurantID)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetEmployeeCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetEmployeeCategory]
+(
+	@CategoryName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select CategoryID from [Employee Categories]
+								Where @CategoryName = [Category Name])
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetHalfProduct]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetHalfProduct]
+(
+	@ProductName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select ProductID From [Half Product Names]
+								Where ProductName = @ProductName)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetHalfProductCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetHalfProductCategory]
+(
+	@CategoryName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select [Category ID] From [Half Products Categories]
+								Where [Category Name] = @CategoryName)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetIndividualClientID]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetIndividualClientID] 
+(
+	@Telephone varchar(15),
+	@RestaurantName varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	Declare @RestaurantID varchar(50) = dbo.f_GetRestaurant(@RestaurantName)
+	RETURN (Select IndividualC.ClientID from [Individual Clients] as IndividualC
+			Inner Join [Clients] as C
+			on IndividualC.ClientID = C.ClientID
+			Where C.Telephone = @Telephone and C.RestaurantID = @RestaurantID)
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetIndividualPermamentDiscount]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetIndividualPermamentDiscount]
+(
+	@Telephone VARCHAR (50),
+	@RestaurantName VARCHAR(50),
+	@FillAnOrderValue date
+)
+RETURNS DECIMAL(18,8)
+AS
+BEGIN
+	DECLARE @RestaurantID INT = dbo.f_GetRestaurant(@RestaurantName)
+	DECLARE @ClientID INT = dbo.f_GetIndividualClientID(@Telephone, @RestaurantName)
+	DECLARE @RES DECIMAL (18,8)
+	SET @RES = (SELECT Value FROM [Individual Permanent Discounts] 
+			WHERE ClientID = @ClientID AND DATEDIFF(DAY,[Start Date],@FillAnOrderValue) >0
+			AND ([End Date] IS NULL OR DATEDIFF(DAY, @FillAnOrderValue, [End Date]) >=0))
+	RETURN @Res
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetIndividualPermamentDiscountValue]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetIndividualPermamentDiscountValue] 
+(
+	@RestaurantID INT,
+	@DateFrom DATE
+)
+RETURNS MONEY
+AS
+BEGIN
+	DECLARE @Res MONEY
+	SET @Res = (SELECT SUM(dbo.f_GetIndividualPermamentDiscount(C.Telephone, R.RestaurantName, O.FillAnOrderDate) * dbo.f_GetNonReducedPrice(O.OrderID)) FROM Orders AS O
+		INNER JOIN [Individual Clients] AS IC ON IC.ClientID = O.ClientID
+		INNER JOIN [Clients] AS C ON IC.ClientID = C.ClientID
+		INNER JOIN [Restaurants] AS R ON R.RestaurantID = O.RestaurantID
+		WHERE (dbo.f_GetIndividualSingleUseDiscount(C.Telephone, R.RestaurantName,O.FillAnOrderDate) <= 
+		dbo.f_GetIndividualPermamentDiscount(C.Telephone, R.RestaurantName, O.FillAnOrderDate) OR 
+		dbo.f_GetIndividualSingleUseDiscount(C.Telephone, R.RestaurantName,O.FillAnOrderDate) IS NULL) 
+		AND O.StatusID = 2 AND DATEDIFF(DAY, @DateFrom, FillAnOrderDate) > 0)
+
+	RETURN @Res
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetIndividualSingleUseDiscount]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetIndividualSingleUseDiscount]
+(
+	@Telephone VARCHAR (50),
+	@RestaurantName VARCHAR(50),
+	@FillAnOrderDate DATE
+)
+RETURNS DECIMAL(18,8)
+AS
+BEGIN
+	DECLARE @RestaurantID INT = dbo.f_GetRestaurant(@RestaurantName)
+	DECLARE @ClientID INT = dbo.f_GetIndividualClientID(@Telephone, @RestaurantName)
+	RETURN (SELECT Value FROM [Individual Single Use Discounts] 
+					WHERE ClientID = @ClientID AND DATEDIFF(DAY, @FillAnOrderDate, [End Date]) >=0 AND 
+					DATEDIFF(DAY, [Start Date], @FillAnOrderDate) >0)
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetIndividualSingleUseDiscountValue]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetIndividualSingleUseDiscountValue] 
+(
+	@RestaurantID INT,
+	@DateFrom DATE
+)
+RETURNS MONEY
+AS
+BEGIN
+	DECLARE @Res MONEY
+	SET @Res = (SELECT SUM(dbo.f_GetIndividualSingleUseDiscount(C.Telephone, R.RestaurantName, O.FillAnOrderDate) * dbo.f_GetNonReducedPrice(O.OrderID)) FROM Orders AS O
+		INNER JOIN [Individual Clients] AS IC ON IC.ClientID = O.ClientID
+		INNER JOIN [Clients] AS C ON IC.ClientID = C.ClientID
+		INNER JOIN [Restaurants] AS R ON R.RestaurantID = O.RestaurantID
+		WHERE (dbo.f_GetIndividualSingleUseDiscount(C.Telephone, R.RestaurantName,O.FillAnOrderDate) > 
+		dbo.f_GetIndividualPermamentDiscount(C.Telephone, R.RestaurantName, O.FillAnOrderDate) OR dbo.f_GetIndividualPermamentDiscount(C.Telephone, R.RestaurantName, O.FillAnOrderDate) IS NULL) AND O.StatusID = 2 AND DATEDIFF(DAY, @DateFrom, FillAnOrderDate) > 0)
+
+	RETURN @Res
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetMaxOrderFromClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetMaxOrderFromClient]
+(
+	@ClientID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @MAX money
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+
+	Set @MAX = (select top(1) dbo.f_GetReducedPrice(OrderID) from Orders 
+	where ClientID = @ClientID and StatusID = @OSId
+	Order by dbo.f_GetReducedPrice(OrderID) DESC)
+
+	-- Return the result of the function
+	RETURN @MAX
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetMaxSeats]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetMaxSeats]
+(
+	@TableID int
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(Select MaxSeats From Tables
+				Where TableID = @TableID)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetMinOrderFromClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetMinOrderFromClient]
+(
+	@ClientID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @MIN money
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+
+	Set @MIN = (select top(1) dbo.f_GetReducedPrice(OrderID) from Orders 
+	where ClientID = @ClientID and StatusID = @OSId
+	Order by dbo.f_GetReducedPrice(OrderID))
+
+	-- Return the result of the function
+	RETURN @MIN
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetMoneySpentByClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetMoneySpentByClient] 
+(
+	@ClientID int,
+	@RestaurantID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @Sum money
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+
+	Set @Sum = (select sum(dbo.f_GetReducedPrice(OrderID)) from Orders where ClientID = @ClientID and StatusID = @OSId)
+
+	RETURN @Sum
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetMoneySpentByClientInTime]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetMoneySpentByClientInTime]
+(
+	@ClientID int,
+	@StartDate date,
+	@EndDate date
+)
+RETURNS money
+AS
+BEGIN
+	Declare @RealisedID int = (select StatusID From [Order Status] where StatusDescription = 'realised')
+
+	Declare @MoneySpent money = 0.0
+
+	Declare @Incomes money = (select sum(dbo.f_GetReducedPrice(OrderID)) from Orders where ClientID = @ClientID and StatusID = @RealisedID
+				and DATEDIFF(day, @StartDate, FillAnOrderDate)>=0 and DATEDIFF(day, FillAnOrderDate, @EndDate)>=0)
+
+	IF (@Incomes is not null)
+		BEGIN
+			SET @MoneySpent = @Incomes
+		END
+
+	-- Return the result of the function
+	RETURN @MoneySpent
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetNonReducedPrice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetNonReducedPrice]
+(
+	@OrderID int
+)
+RETURNS money
+AS
+BEGIN
+	Declare @RestaurantID int = (select RestaurantID from Orders 
+								where OrderID = @OrderID)
+	Declare @ClientID int = (select ClientID from Orders 
+								where OrderID = @OrderID)
+	Declare @Price money = (select sum(OD.Quantity * DPH.Price) from [DishPrice History] as DPH
+							inner join [Orders Details] as OD
+							on OD.DishID = DPH.DishID
+							inner join [Orders] as O
+							on O.OrderID = OD.OrderID
+							where DPH.RestaurantID = @RestaurantID and
+							O.OrderID = @OrderID and datediff(day, DPH.[Start Date], O.FillAnOrderDate) >=0  and 
+							(DPH.[End Date] is null or DATEDIFF(day, O.FillAnOrderDate, DPH.[End Date]) >=0))
+
+	RETURN @Price
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetNumberOfOrdersHigherK1]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetNumberOfOrdersHigherK1] 
+(
+	@ClientID int,
+	@RestaurantID int
+)
+RETURNS int
+AS
+BEGIN
+	
+	Declare @OrderCount int
+	Declare @From date = (select [Start Date] from [Individual Permanent Discounts] where ClientID = @ClientID and [End Date] is null)
+	Declare @K1 money = (select K1 from [Discounts-parameters] where RestaurantID = @RestaurantID)
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+	
+	IF (@From is null)
+		BEGIN
+			SET @OrderCount = (select count(OrderID) from Orders where ClientID = @ClientID and dbo.f_GetReducedPrice(OrderID) > @K1 and StatusID = @OSId)
+		END
+	ELSE
+		BEGIN
+			SET @OrderCount = (select count(OrderID) from Orders where ClientID = @ClientID and dbo.f_GetReducedPrice(OrderID) > @K1 and FillAnOrderDate > @From and StatusID = @OSId)
+		END
+
+	RETURN @OrderCount
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetNumberOrderFromClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetNumberOrderFromClient]
+(
+	@ClientID int
+)
+RETURNS int
+AS
+BEGIN
+	Declare @NUM int
+	Declare @OSId int = (select StatusID from [Order Status] where StatusDescription = 'realised')
+
+	Set @NUM = (select count(OrderID) from Orders 
+	where ClientID = @ClientID and StatusID = @OSId)
+
+	-- Return the result of the function
+	RETURN @NUM
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetOrderStatusID]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetOrderStatusID]
+(
+	@OrderStatusDescription varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	RETURN (SELECT StatusID from [Order Status]
+	WHERE StatusDescription = @OrderStatusDescription)
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetOrderTypeID]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetOrderTypeID]
+(
+	@OrderTypeDescription varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	RETURN (SELECT OrderTypeID FROM [Order Type]
+			WHERE [Order place] = @OrderTypeDescription)
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetReducedPrice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetReducedPrice]
+(
+	@OrderID INT
+)
+RETURNS MONEY
+AS
+BEGIN
+	Declare @RestaurantID int = (select RestaurantID from Orders 
+								where OrderID = @OrderID)
+	Declare @ClientID int = (select ClientID from Orders 
+								where OrderID = @OrderID)
+	DECLARE @Price MONEY = (SELECT SUM(OD.Quantity * DPH.Price) FROM [DishPrice History] AS DPH
+							INNER JOIN [Orders Details] AS OD
+							ON OD.DishID = DPH.DishID
+							INNER JOIN [Orders] AS O
+							ON O.OrderID = OD.OrderID
+							WHERE DPH.RestaurantID = @RestaurantID AND
+							O.OrderID = @OrderID AND DATEDIFF(DAY, DPH.[Start Date], O.FillAnOrderDate) >=0  AND 
+							(DPH.[End Date] IS NULL OR DATEDIFF(DAY, O.FillAnOrderDate, DPH.[End Date]) >=0))
+	DECLARE @FillAnOrderDate DATE = (SELECT FillAnOrderDate FROM Orders WHERE OrderID = @OrderID)
+	DECLARE @RestaurantName VARCHAR(50) = (SELECT RestaurantName FROM Restaurants WHERE RestaurantID = @RestaurantID)
+	IF (EXISTS (SELECT ClientID FROM [Company Clients]
+				WHERE ClientID = @ClientID))
+		BEGIN
+			DECLARE @NIP VARCHAR(50) = (SELECT NIP FROM [Company Clients] WHERE ClientID = @ClientID)
+			DECLARE @QarterDiscount MONEY = dbo.f_GetCompanyQuarterDiscount(@NIP, @RestaurantName, @FillAnOrderDate)
+			IF (@QarterDiscount > @Price)	
+				SET @QarterDiscount = @Price
+			DECLARE @MonthDiscount MONEY = @Price * dbo.f_GetCompanyMonthDiscount(@NIP, @RestaurantName, @FillAnOrderDate)
+			IF (@QarterDiscount IS NULL AND @MonthDiscount IS NULL)
+				SET @Price = @Price
+			ELSE IF (@QarterDiscount IS NULL OR @MonthDiscount >= @QarterDiscount)
+				BEGIN
+					SET @Price = @Price - @MonthDiscount
+				END
+			ELSE
+				BEGIN
+					SET @Price = @Price - @QarterDiscount
+				END
+		END
+	ELSE IF (EXISTS (SELECT ClientID FROM [Individual Clients]
+				WHERE ClientID = @ClientID))
+		BEGIN  
+			DECLARE @telephone VARCHAR(15) = (SELECT Telephone FROM Clients WHERE ClientID = @ClientID)
+			DECLARE @PermamentDiscount MONEY = @Price * dbo.f_GetIndividualPermamentDiscount(@Telephone, @RestaurantName, @FillAnOrderDate)
+			DECLARE @SinleUseDiscount MONEY = @Price * dbo.f_GetIndividualSingleUseDiscount(@Telephone, @RestaurantName, @FillAnOrderDate)
+			IF (@PermamentDiscount IS NULL AND @SinleUseDiscount IS NULL)
+				SET @Price = @Price
+			ELSE IF (@PermamentDiscount IS NULL OR @SinleUseDiscount > @PermamentDiscount)
+				BEGIN
+					SET @Price = @Price - @SinleUseDiscount
+				END
+			ELSE
+				BEGIN
+					SET @Price = @Price - @PermamentDiscount
+				END
+		END
+	RETURN @Price
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetReservationStatusID]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetReservationStatusID]
+(
+	@ReservationStatusDescription varchar(50)
+)
+RETURNS int
+AS
+BEGIN
+	RETURN (SELECT StatusID FROM [Reservation Status] WHERE @ReservationStatusDescription = [Status Description])
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetRestaurant]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE FUNCTION [dbo].[f_GetRestaurant]
+(
+	@RestaurantName varchar(50)
+)
+RETURNS int
+AS
+	BEGIN
+		RETURN(SELECT RestaurantID FROM [Restaurants]
+				WHERE RestaurantName = @RestaurantName)
+	END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_IfExistsInCompany]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_IfExistsInCompany](
+	@ClientID int
+)
+RETURNS int
+AS
+BEGIN
+	RETURN (SELECT 1 FROM [Company Clients] WHERE @ClientID = ClientID)
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_IfExistsInIndividual]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_IfExistsInIndividual] 
+(
+	@ClientID int
+)
+RETURNS int
+AS
+BEGIN
+	DECLARE @Res INT = 0
+	IF (EXISTS (SELECT ClientID FROM dbo.[Individual Clients] WHERE ClientID = @ClientID))
+		BEGIN
+		SET @Res = 1
+		END
+	RETURN @Res
+
+END
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_IsSeaFood]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_IsSeaFood] 
+(
+	@DishID int
+)
+RETURNS int
+AS
+BEGIN
+	Declare @RES int = 0
+	IF (Exists (Select DishID from Dishes as D
+				Inner join [Dish Categories] as DC
+				on D.CategoryID = DC.CategoryID
+				where DC.CategoryName = 'seafood' and D.DishID = @DishID))
+			SET @RES = 1
+	ELSE IF (Exists (Select D.DishID from Dishes as D
+				Inner join [Half Products] as HP
+				on D.DishID = HP.DishID
+				inner join [Half Product Names] as HPN
+				on HP.ProductID = HPN.ProductID
+				inner join [Half Products Categories] as HPC
+				on HPC.[Category ID] = HPN.CategoryID
+				where HPC.[Category Name] = 'seafood' and D.DishID = @DishID))
+			SET @RES =1
+	RETURN @RES
+END
+GO
+/****** Object:  Table [dbo].[Company Reservations]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company Reservations](
+	[ReservationID] [int] IDENTITY(1,1) NOT NULL,
+	[CompanyClientID] [int] NOT NULL,
+	[Date] [date] NOT NULL,
+	[StatusID] [int] NOT NULL,
+	[Guests] [int] NOT NULL,
+	[RestaurantID] [int] NOT NULL,
+	[TableID] [int] NULL,
+ CONSTRAINT [PK_Company Reservations] PRIMARY KEY CLUSTERED 
+(
+	[ReservationID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[IndividualReservations]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[IndividualReservations](
+	[ReservationID] [int] IDENTITY(1,1) NOT NULL,
+	[ClientID] [int] NOT NULL,
+	[OrderID] [int] NOT NULL,
+	[Date] [date] NOT NULL,
+	[TableID] [int] NULL,
+	[Guests] [int] NOT NULL,
+	[StatusID] [int] NOT NULL,
+ CONSTRAINT [PK_Reservations] PRIMARY KEY CLUSTERED 
+(
+	[ReservationID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Tables]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Tables](
+	[RestaurantID] [int] NOT NULL,
+	[TableID] [int] IDENTITY(1,1) NOT NULL,
+	[MaxSeats] [int] NOT NULL,
+ CONSTRAINT [PK_Tables] PRIMARY KEY CLUSTERED 
+(
+	[TableID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Restrictions]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Restrictions](
+	[RestrictionID] [int] IDENTITY(1,1) NOT NULL,
+	[TableID] [int] NOT NULL,
+	[DateFrom] [date] NOT NULL,
+	[DateTo] [date] NULL,
+	[ReducedSeats] [int] NOT NULL,
+ CONSTRAINT [PK_Restrictions] PRIMARY KEY CLUSTERED 
+(
+	[RestrictionID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  View [dbo].[v_AvaliableTables]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[v_AvaliableTables] AS
+SELECT T.RestaurantID, T.TableID, ISNULL(R.ReducedSeats, T.MaxSeats) as [Seats] FROM TABLES AS T
+LEFT OUTER JOIN Restrictions AS R ON R.TableID = T.TableID 
+LEFT OUTER JOIN IndividualReservations AS IR ON IR.TableID = T.TableID
+LEFT OUTER JOIN [Company Reservations] AS CR ON CR.TableID = T.TableID
+WHERE DATEDIFF(DAY, ISNULL(IR.Date, DATEADD(DAY, 1, GETDATE())), GETDATE()) != 0 AND DATEDIFF(DAY, ISNULL(CR.Date, DATEADD(DAY, 1, GETDATE())), GETDATE()) != 0
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetAvailableTables]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetAvailableTables]
+(	
+	@RestaurantName varchar(50)
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	SELECT * FROM v_AvaliableTables
+	WHERE RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+)
+GO
+/****** Object:  Table [dbo].[Clients]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Clients](
+	[ClientID] [int] IDENTITY(1,1) NOT NULL,
+	[Telephone] [varchar](15) NOT NULL,
+	[Email] [varchar](50) NULL,
+	[RestaurantID] [int] NOT NULL,
+	[Address] [int] NULL,
+ CONSTRAINT [PK_Clients] PRIMARY KEY CLUSTERED 
+(
+	[ClientID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Reservation Status]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Reservation Status](
+	[StatusID] [int] IDENTITY(1,1) NOT NULL,
+	[Status Description] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Individual Reservations Status] PRIMARY KEY CLUSTERED 
+(
+	[StatusID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [UK_StatusReservationDescription] UNIQUE NONCLUSTERED 
+(
+	[Status Description] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetReservationsFromDay]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetReservationsFromDay] 
+(	
+	@Day date,
+	@RestaurantName varchar(50)
+)
+RETURNS TABLE 
+AS
+RETURN 
+(	
+	SELECT IR.ReservationID, IR.TableID, IR.Guests, S.[Status Description] FROM IndividualReservations AS IR
+	INNER JOIN [Reservation Status] AS S ON IR.StatusID = S.StatusID
+	INNER JOIN Clients AS C ON C.ClientID = IR.ClientID
+	WHERE IR.Date = @Day AND C.RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+	UNION
+	SELECT CR.ReservationID, CR.TableID, CR.Guests, S.[Status Description] FROM [Company Reservations] AS CR
+	INNER JOIN [Reservation Status] AS S ON CR.StatusID = S.StatusID
+	INNER JOIN Clients AS C ON C.ClientID = CR.CompanyClientID
+	WHERE CR.Date = @Day AND C.RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+)
+GO
+/****** Object:  View [dbo].[v_TablesMonthLongReport]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE VIEW [dbo].[v_TablesMonthLongReport] AS
+SELECT T.RestaurantID, T.TableID, ISNULL(R.ReducedSeats, T.MaxSeats) AS Seats, COUNT(ISNULL(CR.ReservationID, IR.ReservationID)) as [Number of reservations] FROM TABLES AS T
+LEFT OUTER JOIN Restrictions AS R ON R.TableID = T.TableID
+LEFT OUTER JOIN [Company Reservations] AS CR ON CR.TableID = T.TableID
+LEFT OUTER JOIN IndividualReservations AS IR ON IR.TableID = T.TableID
+WHERE DATEDIFF(DAY,CR.Date, GETDATE()) BETWEEN 0 AND 30 OR DATEDIFF(DAY,IR.Date, GETDATE()) BETWEEN 0 AND 30
+GROUP BY T.TableID, ISNULL(R.ReducedSeats, T.MaxSeats), T.RestaurantID
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetTablesMonthReport]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetTablesMonthReport] 
+(	
+	@RestaurantName varchar(50)
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+		SELECT * FROM v_TablesMonthLongReport
+		Where RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+)
+GO
+/****** Object:  View [dbo].[v_TablesWeekLongReport]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[v_TablesWeekLongReport] AS
+SELECT T.RestaurantID, T.TableID, ISNULL(R.ReducedSeats, T.MaxSeats) AS Seats, COUNT(ISNULL(CR.ReservationID, IR.ReservationID)) as [Number of reservations] FROM TABLES AS T
+LEFT OUTER JOIN Restrictions AS R ON R.TableID = T.TableID
+LEFT OUTER JOIN [Company Reservations] AS CR ON CR.TableID = T.TableID
+LEFT OUTER JOIN IndividualReservations AS IR ON IR.TableID = T.TableID
+WHERE DATEDIFF(DAY,CR.Date, GETDATE()) BETWEEN 0 AND 7 OR DATEDIFF(DAY,IR.Date, GETDATE()) BETWEEN 0 AND 7
+GROUP BY T.TableID, ISNULL(R.ReducedSeats, T.MaxSeats), T.RestaurantID
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetTablesWeekReport]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetTablesWeekReport] 
+(	
+	@RestaurantName varchar(50)
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+		SELECT * FROM v_TablesWeekLongReport
+		Where RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+)
+GO
+/****** Object:  Table [dbo].[Dish Categories]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Dish Categories](
+	[CategoryID] [int] IDENTITY(1,1) NOT NULL,
+	[CategoryName] [varchar](50) NOT NULL,
+ CONSTRAINT [tmp_PK_Categories] PRIMARY KEY CLUSTERED 
+(
+	[CategoryID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [tmp_UK_CategoryName] UNIQUE NONCLUSTERED 
+(
+	[CategoryName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[CategoryName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Dishes]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Dishes](
+	[DishID] [int] IDENTITY(1,1) NOT NULL,
+	[DishName] [varchar](50) NOT NULL,
+	[CategoryID] [int] NOT NULL,
+ CONSTRAINT [tmpPK_Menu] PRIMARY KEY CLUSTERED 
+(
+	[DishID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [tmpUK_DishName] UNIQUE NONCLUSTERED 
+(
+	[DishName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Menu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Menu](
+	[RestaurantID] [int] NOT NULL,
+	[DishID] [int] NOT NULL,
+	[InDate] [date] NOT NULL,
+	[OutDate] [date] NOT NULL,
+ CONSTRAINT [PK_Menu] PRIMARY KEY CLUSTERED 
+(
+	[RestaurantID] ASC,
+	[DishID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[DishPrice History]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[DishPrice History](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[DishID] [int] NOT NULL,
+	[Price] [money] NOT NULL,
+	[Start Date] [date] NOT NULL,
+	[End Date] [date] NULL,
+	[RestaurantID] [int] NOT NULL,
+ CONSTRAINT [tmpPK_DishPrice History] PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  View [dbo].[v_CurrentMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE VIEW [dbo].[v_CurrentMenu] AS
+SELECT M.RestaurantID, D.DishName, C.CategoryName, P.Price, M.InDate, M.OutDate FROM Menu AS M
+LEFT OUTER JOIN Dishes AS D ON D.DishID = M.DishID
+LEFT OUTER JOIN [Dish Categories] AS C ON D.CategoryID = C.CategoryID
+LEFT OUTER JOIN [DishPrice History] AS P 
+ON P.RestaurantID = M.RestaurantID AND M.DishID = P.DishID AND DATEDIFF(DAY, ISNULL(P.[End Date],M.InDate), M.InDate) <= 0
+AND DATEDIFF(DAY, P.[Start Date], ISNULL(M.OutDate, P.[Start Date])) >= 0
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetCurrentMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetCurrentMenu] 
+(	
+	@RestaurantName varchar(50)
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	SELECT * FROM v_CurrentMenu
+	WHERE RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+)
+GO
+/****** Object:  Table [dbo].[Orders]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Orders](
+	[OrderID] [int] IDENTITY(1,1) NOT NULL,
+	[ClientID] [int] NOT NULL,
+	[PlaceAnOrderDate] [date] NOT NULL,
+	[FillAnOrderDate] [date] NOT NULL,
+	[StatusID] [int] NOT NULL,
+	[OrderTypeID] [int] NOT NULL,
+	[EmployeeID] [int] NULL,
+	[RestaurantID] [int] NOT NULL,
+ CONSTRAINT [PK_Orders History] PRIMARY KEY CLUSTERED 
+(
+	[OrderID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetClientOrdersStatistics]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetClientOrdersStatistics] 
+(	
+	@ClientID int
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	Select OrderID as 'order id' , FillAnOrderDate as 'date',
+	dbo.f_GetReducedPrice(OrderID) as 'Price',
+	(dbo.f_GetNonReducedPrice(OrderID) - dbo.f_GetReducedPrice(OrderID)) as 'Discount'
+	From Orders where ClientID = @ClientID and StatusID = 2
+)
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetClientStatistics]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetClientStatistics] 
+(	
+	@RestaurantID int
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	select ClientID as ClientID, dbo.f_GetNumberOrderFromClient(ClientID) as 'num',
+	dbo.f_GetMoneySpentByClient(ClientID, @RestaurantID) as 'sum', dbo.f_GetMaxOrderFromClient(ClientID) as 'max',
+	dbo.f_GetMinOrderFromClient(ClientID) as 'min', dbo.f_GetAverageOrderFromClient(ClientID) as 'avg'
+	From Clients
+	Where RestaurantID = @RestaurantID
+)
+GO
+/****** Object:  Table [dbo].[Orders Details]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Orders Details](
+	[OrderID] [int] NOT NULL,
+	[DishID] [int] NOT NULL,
+	[Quantity] [int] NOT NULL,
+ CONSTRAINT [PK_Orders Details] PRIMARY KEY CLUSTERED 
+(
+	[OrderID] ASC,
+	[DishID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Order Status]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Order Status](
+	[StatusID] [int] IDENTITY(1,1) NOT NULL,
+	[StatusDescription] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Order Status] PRIMARY KEY CLUSTERED 
+(
+	[StatusID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [UK_StatusDescription] UNIQUE NONCLUSTERED 
+(
+	[StatusDescription] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Order Type]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Order Type](
+	[OrderTypeID] [int] IDENTITY(1,1) NOT NULL,
+	[Order place] [varchar](30) NOT NULL,
+ CONSTRAINT [PK_Order place] PRIMARY KEY CLUSTERED 
+(
+	[OrderTypeID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [UK_OrderPlace] UNIQUE NONCLUSTERED 
+(
+	[Order place] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  View [dbo].[v_Orders]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE VIEW [dbo].[v_Orders] AS
+SELECT O.RestaurantID, O.OrderID, O.ClientID, 
+O.PlaceAnOrderDate, O.FillAnOrderDate, ISNULL(D.DishName,'-') AS [Dish Name], 
+ISNULL(OD.Quantity,'0') AS Quantity, 
+ISNULL(dbo.f_GetCurrentDishPrice(OD.DishID, O.RestaurantID), 0) AS UnitPrice, 
+ISNULL(ISNULL(dbo.f_GetDishPriceFromOrder(O.OrderID,OD.DishID), 0) * Quantity,0) AS [Total price] , OT.[Order place], OS.StatusDescription FROM Orders AS O
+LEFT OUTER JOIN [Orders Details] AS OD
+ON O.OrderID = OD.OrderID
+LEFT OUTER JOIN [Dishes] AS D
+ON D.DishID = OD.DishID
+LEFT OUTER JOIN [Order Type] AS OT
+ON O.OrderTypeID = OT.OrderTypeID
+LEFT OUTER JOIN [Order Status] AS OS
+ON O.StatusID = OS.StatusID
+GO
+/****** Object:  Table [dbo].[ZipCode]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[ZipCode](
+	[ZipCodeID] [int] IDENTITY(1,1) NOT NULL,
+	[ZipCode] [varchar](10) NOT NULL,
+ CONSTRAINT [PK_ZipCode] PRIMARY KEY CLUSTERED 
+(
+	[ZipCodeID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[ZipCode] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Address]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Address](
+	[AddressID] [int] IDENTITY(1,1) NOT NULL,
+	[CityID] [int] NOT NULL,
+	[ZipCodeID] [int] NOT NULL,
+	[Street] [varchar](30) NOT NULL,
+ CONSTRAINT [PK_Address] PRIMARY KEY CLUSTERED 
+(
+	[AddressID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[City]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[City](
+	[CityID] [int] IDENTITY(1,1) NOT NULL,
+	[CityName] [varchar](20) NOT NULL,
+ CONSTRAINT [PK_City] PRIMARY KEY CLUSTERED 
+(
+	[CityID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[CityName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetFullAddress]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE FUNCTION [dbo].[f_GetFullAddress]
+(	
+	@AddressID int
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	SELECT C.CityName, Z.ZipCode, A.Street FROM Address AS A
+	INNER JOIN City AS C ON A.CityID = C.CityID
+	INNER JOIN ZipCode AS Z ON Z.ZipCodeID = A.ZipCodeID
+	WHERE A.AddressID = @AddressID
+)
+GO
+/****** Object:  UserDefinedFunction [dbo].[f_GetDiscountsStatistics]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE FUNCTION [dbo].[f_GetDiscountsStatistics] 
+(	
+	@RestaurantID int,
+	@DateFrom date
+)
+RETURNS TABLE 
+AS
+RETURN 
+(
+	SELECT dbo.f_GetCompanyQuarterDiscountValue(@RestaurantID, @DateFrom) as 'Company Quarter Discount',
+	dbo.f_GetCompanyMonthDiscountValue(@RestaurantID, @DateFrom) as 'Company Month Discount',
+	dbo.f_GetIndividualPermamentDiscountValue(@RestaurantID, @DateFrom) as 'Individual Permament Discount',
+	dbo.f_GetIndividualSingleUseDiscountValue(@RestaurantID, @DateFrom) as 'Individual Single Use Discount'
+
+)
+GO
+/****** Object:  Table [dbo].[Company  Month Discounts]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company  Month Discounts](
+	[DiscountID] [int] IDENTITY(1,1) NOT NULL,
+	[Start Date] [date] NOT NULL,
+	[End Date] [date] NOT NULL,
+	[ClientID] [int] NOT NULL,
+	[Value] [decimal](18, 8) NOT NULL,
+ CONSTRAINT [PK_Company Disount Values] PRIMARY KEY CLUSTERED 
+(
+	[DiscountID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Company Clients]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company Clients](
+	[ClientID] [int] NOT NULL,
+	[NIP] [varchar](50) NOT NULL,
+	[CompanyName] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Company Clients] PRIMARY KEY CLUSTERED 
+(
+	[ClientID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Company Clients Employees]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company Clients Employees](
+	[CompanyEmployeeID] [int] IDENTITY(1,1) NOT NULL,
+	[CompanyID] [int] NOT NULL,
+	[FirstName] [varchar](50) NOT NULL,
+	[LastName] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Company Clients Employees] PRIMARY KEY CLUSTERED 
+(
+	[CompanyEmployeeID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Company Quarter Discounts]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company Quarter Discounts](
+	[DiscountID] [int] IDENTITY(1,1) NOT NULL,
+	[Start Date] [date] NOT NULL,
+	[End Date] [date] NOT NULL,
+	[ClientID] [int] NOT NULL,
+	[Value] [money] NOT NULL,
+ CONSTRAINT [PK_Company Discounts] PRIMARY KEY CLUSTERED 
+(
+	[DiscountID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Company Reservations Details]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Company Reservations Details](
+	[ReservationID] [int] NOT NULL,
+	[CompanyEmployeeID] [int] NOT NULL,
+ CONSTRAINT [PK_Company Reservations Details_1] PRIMARY KEY CLUSTERED 
+(
+	[ReservationID] ASC,
+	[CompanyEmployeeID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Discounts-parameters]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Discounts-parameters](
+	[RestaurantID] [int] NOT NULL,
+	[Z1] [int] NULL,
+	[K1] [money] NULL,
+	[R1%] [decimal](18, 8) NULL,
+	[K2] [money] NULL,
+	[R2%] [decimal](18, 8) NULL,
+	[D1] [int] NULL,
+	[K3] [money] NULL,
+	[R3%] [decimal](18, 8) NULL,
+	[D2] [int] NULL,
+	[FZ] [int] NULL,
+	[FK1] [money] NULL,
+	[FR1%] [decimal](18, 8) NULL,
+	[FM%] [decimal](18, 8) NULL,
+	[FK2] [money] NULL,
+	[FR2%] [decimal](18, 8) NULL,
+ CONSTRAINT [PK_Discounts-parameters] PRIMARY KEY CLUSTERED 
+(
+	[RestaurantID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Employee Categories]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Employee Categories](
+	[CategoryID] [int] IDENTITY(1,1) NOT NULL,
+	[Category Name] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Employee Categories] PRIMARY KEY CLUSTERED 
+(
+	[CategoryID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [UK_ECategoryName] UNIQUE NONCLUSTERED 
+(
+	[Category Name] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Employees]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Employees](
+	[EmployeeID] [int] IDENTITY(1,1) NOT NULL,
+	[Firstname] [varchar](50) NOT NULL,
+	[Lastname] [varchar](50) NOT NULL,
+	[Employee Category] [int] NOT NULL,
+	[RestaurantID] [int] NOT NULL,
+	[PESEL] [varchar](11) NOT NULL,
+ CONSTRAINT [PK_Employees] PRIMARY KEY CLUSTERED 
+(
+	[EmployeeID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Half Product Names]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Half Product Names](
+	[ProductID] [int] IDENTITY(1,1) NOT NULL,
+	[ProductName] [varchar](50) NOT NULL,
+	[CategoryID] [int] NOT NULL,
+ CONSTRAINT [tmpPK_Half Product Names] PRIMARY KEY CLUSTERED 
+(
+	[ProductID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [tmpUK_ProductName] UNIQUE NONCLUSTERED 
+(
+	[ProductName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Half Products]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Half Products](
+	[ProductID] [int] NOT NULL,
+	[DishID] [int] NOT NULL,
+ CONSTRAINT [PK_Half Products] PRIMARY KEY CLUSTERED 
+(
+	[ProductID] ASC,
+	[DishID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Half Products Categories]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Half Products Categories](
+	[Category ID] [int] IDENTITY(1,1) NOT NULL,
+	[Category Name] [varchar](50) NOT NULL,
+ CONSTRAINT [tmpPK_Half Products Categories] PRIMARY KEY CLUSTERED 
+(
+	[Category ID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [tmpUK_HCategoryName] UNIQUE NONCLUSTERED 
+(
+	[Category Name] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Individual Clients]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Individual Clients](
+	[ClientID] [int] NOT NULL,
+	[Firstname] [varchar](50) NOT NULL,
+	[Lastname] [varchar](50) NOT NULL,
+ CONSTRAINT [PK_Individual Clients] PRIMARY KEY CLUSTERED 
+(
+	[ClientID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Individual Permanent Discounts]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Individual Permanent Discounts](
+	[DiscountID] [int] IDENTITY(1,1) NOT NULL,
+	[Start Date] [date] NOT NULL,
+	[End Date] [date] NULL,
+	[ClientID] [int] NOT NULL,
+	[Value] [decimal](18, 8) NOT NULL,
+ CONSTRAINT [PK_Individual Discounts Values] PRIMARY KEY CLUSTERED 
+(
+	[DiscountID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Individual Single Use Discounts]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Individual Single Use Discounts](
+	[DiscountID] [int] IDENTITY(1,1) NOT NULL,
+	[ClientID] [int] NOT NULL,
+	[Start Date] [date] NOT NULL,
+	[End Date] [date] NOT NULL,
+	[Value] [decimal](18, 8) NOT NULL,
+ CONSTRAINT [PK_IndividualDiscounts] PRIMARY KEY CLUSTERED 
+(
+	[DiscountID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Invoice Details]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Invoice Details](
+	[InvoiceID] [int] NOT NULL,
+	[OrderID] [int] NOT NULL,
+ CONSTRAINT [PK_Invoice Details] PRIMARY KEY CLUSTERED 
+(
+	[InvoiceID] ASC,
+	[OrderID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Invoices]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Invoices](
+	[InvoiceID] [int] IDENTITY(1,1) NOT NULL,
+	[Date] [date] NOT NULL,
+	[ClientID] [int] NOT NULL,
+ CONSTRAINT [PK_Invoices_1] PRIMARY KEY CLUSTERED 
+(
+	[InvoiceID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[Restaurants]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[Restaurants](
+	[RestaurantID] [int] IDENTITY(1,1) NOT NULL,
+	[RestaurantName] [varchar](50) NOT NULL,
+	[Address] [int] NOT NULL,
+	[NIP] [varchar](10) NOT NULL,
+ CONSTRAINT [PK_Restaurants] PRIMARY KEY CLUSTERED 
+(
+	[RestaurantID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+ CONSTRAINT [UK_Restaurant_Name] UNIQUE NONCLUSTERED 
+(
+	[RestaurantName] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[Address] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[NIP] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+ALTER TABLE [dbo].[Address]  WITH CHECK ADD  CONSTRAINT [FK_Address_City] FOREIGN KEY([CityID])
+REFERENCES [dbo].[City] ([CityID])
+GO
+ALTER TABLE [dbo].[Address] CHECK CONSTRAINT [FK_Address_City]
+GO
+ALTER TABLE [dbo].[Address]  WITH CHECK ADD  CONSTRAINT [FK_Address_ZipCode] FOREIGN KEY([ZipCodeID])
+REFERENCES [dbo].[ZipCode] ([ZipCodeID])
+GO
+ALTER TABLE [dbo].[Address] CHECK CONSTRAINT [FK_Address_ZipCode]
+GO
+ALTER TABLE [dbo].[Clients]  WITH CHECK ADD  CONSTRAINT [FK_Clients_Address] FOREIGN KEY([Address])
+REFERENCES [dbo].[Address] ([AddressID])
+GO
+ALTER TABLE [dbo].[Clients] CHECK CONSTRAINT [FK_Clients_Address]
+GO
+ALTER TABLE [dbo].[Clients]  WITH CHECK ADD  CONSTRAINT [FK_Clients_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Clients] CHECK CONSTRAINT [FK_Clients_Restaurants]
+GO
+ALTER TABLE [dbo].[Company  Month Discounts]  WITH CHECK ADD  CONSTRAINT [FK_Company  Month Discounts_Company Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Company Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Company  Month Discounts] CHECK CONSTRAINT [FK_Company  Month Discounts_Company Clients]
+GO
+ALTER TABLE [dbo].[Company Clients]  WITH CHECK ADD  CONSTRAINT [FK_Company Clients_Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Company Clients] CHECK CONSTRAINT [FK_Company Clients_Clients]
+GO
+ALTER TABLE [dbo].[Company Clients Employees]  WITH CHECK ADD  CONSTRAINT [FK_Company Clients Employees_Company Clients] FOREIGN KEY([CompanyID])
+REFERENCES [dbo].[Company Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Company Clients Employees] CHECK CONSTRAINT [FK_Company Clients Employees_Company Clients]
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts]  WITH CHECK ADD  CONSTRAINT [FK_Company Quarter Discounts_Company Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Company Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts] CHECK CONSTRAINT [FK_Company Quarter Discounts_Company Clients]
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD FOREIGN KEY([TableID])
+REFERENCES [dbo].[Tables] ([TableID])
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD FOREIGN KEY([TableID])
+REFERENCES [dbo].[Tables] ([TableID])
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD  CONSTRAINT [FK_Company Reservations_Company Clients] FOREIGN KEY([CompanyClientID])
+REFERENCES [dbo].[Company Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Company Reservations] CHECK CONSTRAINT [FK_Company Reservations_Company Clients]
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD  CONSTRAINT [FK_Company Reservations_Reservation Status] FOREIGN KEY([StatusID])
+REFERENCES [dbo].[Reservation Status] ([StatusID])
+GO
+ALTER TABLE [dbo].[Company Reservations] CHECK CONSTRAINT [FK_Company Reservations_Reservation Status]
+GO
+ALTER TABLE [dbo].[Company Reservations Details]  WITH CHECK ADD  CONSTRAINT [FK_Company Reservations Details_Company Clients Employees] FOREIGN KEY([CompanyEmployeeID])
+REFERENCES [dbo].[Company Clients Employees] ([CompanyEmployeeID])
+GO
+ALTER TABLE [dbo].[Company Reservations Details] CHECK CONSTRAINT [FK_Company Reservations Details_Company Clients Employees]
+GO
+ALTER TABLE [dbo].[Company Reservations Details]  WITH CHECK ADD  CONSTRAINT [FK_Company Reservations Details_Company Reservations] FOREIGN KEY([ReservationID])
+REFERENCES [dbo].[Company Reservations] ([ReservationID])
+GO
+ALTER TABLE [dbo].[Company Reservations Details] CHECK CONSTRAINT [FK_Company Reservations Details_Company Reservations]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [FK_Discounts-parameters_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [FK_Discounts-parameters_Restaurants]
+GO
+ALTER TABLE [dbo].[Dishes]  WITH CHECK ADD  CONSTRAINT [FK_Dishes_Dish Categories] FOREIGN KEY([CategoryID])
+REFERENCES [dbo].[Dish Categories] ([CategoryID])
+GO
+ALTER TABLE [dbo].[Dishes] CHECK CONSTRAINT [FK_Dishes_Dish Categories]
+GO
+ALTER TABLE [dbo].[DishPrice History]  WITH CHECK ADD  CONSTRAINT [FK_DishPrice History_Dishes] FOREIGN KEY([DishID])
+REFERENCES [dbo].[Dishes] ([DishID])
+GO
+ALTER TABLE [dbo].[DishPrice History] CHECK CONSTRAINT [FK_DishPrice History_Dishes]
+GO
+ALTER TABLE [dbo].[DishPrice History]  WITH CHECK ADD  CONSTRAINT [FK_DishPrice History_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[DishPrice History] CHECK CONSTRAINT [FK_DishPrice History_Restaurants]
+GO
+ALTER TABLE [dbo].[Employees]  WITH CHECK ADD  CONSTRAINT [FK_Employees_Employee Categories] FOREIGN KEY([Employee Category])
+REFERENCES [dbo].[Employee Categories] ([CategoryID])
+GO
+ALTER TABLE [dbo].[Employees] CHECK CONSTRAINT [FK_Employees_Employee Categories]
+GO
+ALTER TABLE [dbo].[Employees]  WITH CHECK ADD  CONSTRAINT [FK_Employees_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Employees] CHECK CONSTRAINT [FK_Employees_Restaurants]
+GO
+ALTER TABLE [dbo].[Half Product Names]  WITH CHECK ADD  CONSTRAINT [FK_Half Product Names_Half Products Categories] FOREIGN KEY([CategoryID])
+REFERENCES [dbo].[Half Products Categories] ([Category ID])
+GO
+ALTER TABLE [dbo].[Half Product Names] CHECK CONSTRAINT [FK_Half Product Names_Half Products Categories]
+GO
+ALTER TABLE [dbo].[Half Products]  WITH CHECK ADD  CONSTRAINT [FK_Half Products_Dishes] FOREIGN KEY([DishID])
+REFERENCES [dbo].[Dishes] ([DishID])
+GO
+ALTER TABLE [dbo].[Half Products] CHECK CONSTRAINT [FK_Half Products_Dishes]
+GO
+ALTER TABLE [dbo].[Half Products]  WITH CHECK ADD  CONSTRAINT [FK_Half Products_Half Product Names] FOREIGN KEY([ProductID])
+REFERENCES [dbo].[Half Product Names] ([ProductID])
+GO
+ALTER TABLE [dbo].[Half Products] CHECK CONSTRAINT [FK_Half Products_Half Product Names]
+GO
+ALTER TABLE [dbo].[Individual Clients]  WITH CHECK ADD  CONSTRAINT [FK__Individua__Clien__216BEC9A] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Individual Clients] CHECK CONSTRAINT [FK__Individua__Clien__216BEC9A]
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts]  WITH CHECK ADD  CONSTRAINT [FK_Individual Permanent Discounts_Individual Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Individual Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts] CHECK CONSTRAINT [FK_Individual Permanent Discounts_Individual Clients]
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts]  WITH CHECK ADD  CONSTRAINT [FK_Individual Single Use Discounts_Individual Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Individual Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts] CHECK CONSTRAINT [FK_Individual Single Use Discounts_Individual Clients]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [FK_IndividualReservations_Individual Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Individual Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [FK_IndividualReservations_Individual Clients]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [FK_IndividualReservations_Individual Reservation Status] FOREIGN KEY([StatusID])
+REFERENCES [dbo].[Reservation Status] ([StatusID])
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [FK_IndividualReservations_Individual Reservation Status]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [FK_IndividualReservations_Orders] FOREIGN KEY([OrderID])
+REFERENCES [dbo].[Orders] ([OrderID])
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [FK_IndividualReservations_Orders]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [FK_IndividualReservations_Tables] FOREIGN KEY([TableID])
+REFERENCES [dbo].[Tables] ([TableID])
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [FK_IndividualReservations_Tables]
+GO
+ALTER TABLE [dbo].[Invoice Details]  WITH CHECK ADD  CONSTRAINT [FK_Invoice Details_Invoices] FOREIGN KEY([InvoiceID])
+REFERENCES [dbo].[Invoices] ([InvoiceID])
+GO
+ALTER TABLE [dbo].[Invoice Details] CHECK CONSTRAINT [FK_Invoice Details_Invoices]
+GO
+ALTER TABLE [dbo].[Invoice Details]  WITH CHECK ADD  CONSTRAINT [FK_Invoice Details_Orders] FOREIGN KEY([OrderID])
+REFERENCES [dbo].[Orders] ([OrderID])
+GO
+ALTER TABLE [dbo].[Invoice Details] CHECK CONSTRAINT [FK_Invoice Details_Orders]
+GO
+ALTER TABLE [dbo].[Invoices]  WITH CHECK ADD  CONSTRAINT [FK_Invoices_Clients] FOREIGN KEY([ClientID])
+REFERENCES [dbo].[Clients] ([ClientID])
+GO
+ALTER TABLE [dbo].[Invoices] CHECK CONSTRAINT [FK_Invoices_Clients]
+GO
+ALTER TABLE [dbo].[Menu]  WITH CHECK ADD  CONSTRAINT [FK_Menu_Dishes] FOREIGN KEY([DishID])
+REFERENCES [dbo].[Dishes] ([DishID])
+GO
+ALTER TABLE [dbo].[Menu] CHECK CONSTRAINT [FK_Menu_Dishes]
+GO
+ALTER TABLE [dbo].[Menu]  WITH CHECK ADD  CONSTRAINT [FK_Menu_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Menu] CHECK CONSTRAINT [FK_Menu_Restaurants]
+GO
+ALTER TABLE [dbo].[Orders]  WITH CHECK ADD  CONSTRAINT [FK_Orders_Employees] FOREIGN KEY([EmployeeID])
+REFERENCES [dbo].[Employees] ([EmployeeID])
+GO
+ALTER TABLE [dbo].[Orders] CHECK CONSTRAINT [FK_Orders_Employees]
+GO
+ALTER TABLE [dbo].[Orders]  WITH CHECK ADD  CONSTRAINT [FK_Orders_Order Status] FOREIGN KEY([StatusID])
+REFERENCES [dbo].[Order Status] ([StatusID])
+GO
+ALTER TABLE [dbo].[Orders] CHECK CONSTRAINT [FK_Orders_Order Status]
+GO
+ALTER TABLE [dbo].[Orders]  WITH CHECK ADD  CONSTRAINT [FK_Orders_Order Type] FOREIGN KEY([OrderTypeID])
+REFERENCES [dbo].[Order Type] ([OrderTypeID])
+GO
+ALTER TABLE [dbo].[Orders] CHECK CONSTRAINT [FK_Orders_Order Type]
+GO
+ALTER TABLE [dbo].[Orders]  WITH CHECK ADD  CONSTRAINT [FK_Orders_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Orders] CHECK CONSTRAINT [FK_Orders_Restaurants]
+GO
+ALTER TABLE [dbo].[Orders Details]  WITH CHECK ADD  CONSTRAINT [FK_Orders Details_Dishes] FOREIGN KEY([DishID])
+REFERENCES [dbo].[Dishes] ([DishID])
+GO
+ALTER TABLE [dbo].[Orders Details] CHECK CONSTRAINT [FK_Orders Details_Dishes]
+GO
+ALTER TABLE [dbo].[Orders Details]  WITH CHECK ADD  CONSTRAINT [FK_Orders Details_Orders] FOREIGN KEY([OrderID])
+REFERENCES [dbo].[Orders] ([OrderID])
+GO
+ALTER TABLE [dbo].[Orders Details] CHECK CONSTRAINT [FK_Orders Details_Orders]
+GO
+ALTER TABLE [dbo].[Restaurants]  WITH CHECK ADD  CONSTRAINT [FK_Restaurants_Address] FOREIGN KEY([Address])
+REFERENCES [dbo].[Address] ([AddressID])
+GO
+ALTER TABLE [dbo].[Restaurants] CHECK CONSTRAINT [FK_Restaurants_Address]
+GO
+ALTER TABLE [dbo].[Restrictions]  WITH CHECK ADD  CONSTRAINT [FK_Restrictions_Tables] FOREIGN KEY([TableID])
+REFERENCES [dbo].[Tables] ([TableID])
+GO
+ALTER TABLE [dbo].[Restrictions] CHECK CONSTRAINT [FK_Restrictions_Tables]
+GO
+ALTER TABLE [dbo].[Tables]  WITH CHECK ADD  CONSTRAINT [FK_Tables_Restaurants] FOREIGN KEY([RestaurantID])
+REFERENCES [dbo].[Restaurants] ([RestaurantID])
+GO
+ALTER TABLE [dbo].[Tables] CHECK CONSTRAINT [FK_Tables_Restaurants]
+GO
+ALTER TABLE [dbo].[Clients]  WITH CHECK ADD  CONSTRAINT [CK_Clients] CHECK  (([Email] like '%@%'))
+GO
+ALTER TABLE [dbo].[Clients] CHECK CONSTRAINT [CK_Clients]
+GO
+ALTER TABLE [dbo].[Clients]  WITH CHECK ADD  CONSTRAINT [CK_Clients_1] CHECK  ((isnumeric([Telephone])=(1)))
+GO
+ALTER TABLE [dbo].[Clients] CHECK CONSTRAINT [CK_Clients_1]
+GO
+ALTER TABLE [dbo].[Company  Month Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Company  Month Discounts] CHECK  ((datediff(day,[Start Date],[End Date])>=(0)))
+GO
+ALTER TABLE [dbo].[Company  Month Discounts] CHECK CONSTRAINT [CK_Company  Month Discounts]
+GO
+ALTER TABLE [dbo].[Company  Month Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Company  Month Discounts_1] CHECK  (([Value]>=(0) AND [Value]<=(1)))
+GO
+ALTER TABLE [dbo].[Company  Month Discounts] CHECK CONSTRAINT [CK_Company  Month Discounts_1]
+GO
+ALTER TABLE [dbo].[Company Clients]  WITH CHECK ADD  CONSTRAINT [CK_Company Clients] CHECK  ((isnumeric([NIP])=(1)))
+GO
+ALTER TABLE [dbo].[Company Clients] CHECK CONSTRAINT [CK_Company Clients]
+GO
+ALTER TABLE [dbo].[Company Clients]  WITH CHECK ADD  CONSTRAINT [CK_Company Clients_1] CHECK  ((len([NIP])=(11)))
+GO
+ALTER TABLE [dbo].[Company Clients] CHECK CONSTRAINT [CK_Company Clients_1]
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Company Quarter Discounts] CHECK  ((datediff(day,[Start Date],[End Date])>=(0)))
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts] CHECK CONSTRAINT [CK_Company Quarter Discounts]
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Company Quarter Discounts_1] CHECK  (([Value]>(0)))
+GO
+ALTER TABLE [dbo].[Company Quarter Discounts] CHECK CONSTRAINT [CK_Company Quarter Discounts_1]
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD  CONSTRAINT [DATE] CHECK  ((datediff(day,getdate(),[Date])>=(0)))
+GO
+ALTER TABLE [dbo].[Company Reservations] CHECK CONSTRAINT [DATE]
+GO
+ALTER TABLE [dbo].[Company Reservations]  WITH CHECK ADD  CONSTRAINT [Guests_Number] CHECK  (([Guests]>(2)))
+GO
+ALTER TABLE [dbo].[Company Reservations] CHECK CONSTRAINT [Guests_Number]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [CK_Discounts-parameters] CHECK  (([Z1]>=(0) AND [K1]>=(0) AND [R1%]>=(0) AND [R1%]<(1)))
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [CK_Discounts-parameters]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [CK_Discounts-parameters_1] CHECK  (([K2]>=(0) AND [R2%]>=(0) AND [R2%]<(1) AND [D1]>(0)))
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [CK_Discounts-parameters_1]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [CK_Discounts-parameters_2] CHECK  (([K3]>=(0) AND [R3%]>=(0) AND [R3%]<(1) AND [D2]>(0)))
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [CK_Discounts-parameters_2]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [CK_Discounts-parameters_3] CHECK  (([FZ]>=(0) AND [FK1]>=(0) AND [FR1%]>=(0) AND [FR1%]<=[FM%] AND [FM%]>=(0) AND [FM%]<(1)))
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [CK_Discounts-parameters_3]
+GO
+ALTER TABLE [dbo].[Discounts-parameters]  WITH CHECK ADD  CONSTRAINT [CK_Discounts-parameters_4] CHECK  (([FK2]>=(0) AND [FR2%]>=(0) AND [FR2%]<(1)))
+GO
+ALTER TABLE [dbo].[Discounts-parameters] CHECK CONSTRAINT [CK_Discounts-parameters_4]
+GO
+ALTER TABLE [dbo].[DishPrice History]  WITH CHECK ADD  CONSTRAINT [CK_DishPrice History] CHECK  (([End Date]=NULL OR datediff(day,[Start Date],[End Date])>=(0)))
+GO
+ALTER TABLE [dbo].[DishPrice History] CHECK CONSTRAINT [CK_DishPrice History]
+GO
+ALTER TABLE [dbo].[DishPrice History]  WITH CHECK ADD  CONSTRAINT [CK_DishPrice History_1_Price] CHECK  (([Price]>(0)))
+GO
+ALTER TABLE [dbo].[DishPrice History] CHECK CONSTRAINT [CK_DishPrice History_1_Price]
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Individual Permament Discounts] CHECK  ((datediff(day,[Start Date],[End Date])>=(0)))
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts] CHECK CONSTRAINT [CK_Individual Permament Discounts]
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Individual Permament Discounts_1] CHECK  (([value]>=(0) AND [value]<=(1)))
+GO
+ALTER TABLE [dbo].[Individual Permanent Discounts] CHECK CONSTRAINT [CK_Individual Permament Discounts_1]
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Individual Single Use Discounts] CHECK  ((datediff(day,[Start Date],[End Date])>=(0)))
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts] CHECK CONSTRAINT [CK_Individual Single Use Discounts]
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts]  WITH CHECK ADD  CONSTRAINT [CK_Individual Single Use Discounts_1] CHECK  (([value]>=(0) AND [value]<=(1)))
+GO
+ALTER TABLE [dbo].[Individual Single Use Discounts] CHECK CONSTRAINT [CK_Individual Single Use Discounts_1]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [CK_IndividualReservations_Date] CHECK  ((datediff(day,getdate(),[Date])>=(0)))
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [CK_IndividualReservations_Date]
+GO
+ALTER TABLE [dbo].[IndividualReservations]  WITH CHECK ADD  CONSTRAINT [IGuest_Number] CHECK  (([Guests]>(2)))
+GO
+ALTER TABLE [dbo].[IndividualReservations] CHECK CONSTRAINT [IGuest_Number]
+GO
+ALTER TABLE [dbo].[Menu]  WITH CHECK ADD  CONSTRAINT [CK_Menu] CHECK  ((datediff(day,[InDate],[OutDate])>=(0)))
+GO
+ALTER TABLE [dbo].[Menu] CHECK CONSTRAINT [CK_Menu]
+GO
+ALTER TABLE [dbo].[Orders]  WITH CHECK ADD  CONSTRAINT [CK_Orders] CHECK  ((datediff(day,[PlaceAnOrderDate],[FillAnOrderDate])>=(0)))
+GO
+ALTER TABLE [dbo].[Orders] CHECK CONSTRAINT [CK_Orders]
+GO
+ALTER TABLE [dbo].[Orders Details]  WITH CHECK ADD  CONSTRAINT [CK_Orders Details] CHECK  (([Quantity]>(0)))
+GO
+ALTER TABLE [dbo].[Orders Details] CHECK CONSTRAINT [CK_Orders Details]
+GO
+ALTER TABLE [dbo].[Restaurants]  WITH CHECK ADD  CONSTRAINT [CK_Restaurant] CHECK  ((isnumeric([NIP])=(1)))
+GO
+ALTER TABLE [dbo].[Restaurants] CHECK CONSTRAINT [CK_Restaurant]
+GO
+ALTER TABLE [dbo].[Restaurants]  WITH CHECK ADD  CONSTRAINT [CK_Restaurant_1] CHECK  ((len([NIP])=(10)))
+GO
+ALTER TABLE [dbo].[Restaurants] CHECK CONSTRAINT [CK_Restaurant_1]
+GO
+ALTER TABLE [dbo].[Restrictions]  WITH CHECK ADD  CONSTRAINT [CK_Restrictions] CHECK  ((datediff(day,[DateFrom],[DateTo])>=(0)))
+GO
+ALTER TABLE [dbo].[Restrictions] CHECK CONSTRAINT [CK_Restrictions]
+GO
+ALTER TABLE [dbo].[Restrictions]  WITH CHECK ADD  CONSTRAINT [CK_Restrictions_1] CHECK  (([ReducedSeats]>=(0)))
+GO
+ALTER TABLE [dbo].[Restrictions] CHECK CONSTRAINT [CK_Restrictions_1]
+GO
+ALTER TABLE [dbo].[Tables]  WITH CHECK ADD  CONSTRAINT [CK_Tables] CHECK  (([MaxSeats]>(0)))
+GO
+ALTER TABLE [dbo].[Tables] CHECK CONSTRAINT [CK_Tables]
+GO
+ALTER TABLE [dbo].[ZipCode]  WITH CHECK ADD  CONSTRAINT [CK_ZipCode] CHECK  (([ZipCode] like '[0-9][0-9]-[0-9][0-9][0-9]'))
+GO
+ALTER TABLE [dbo].[ZipCode] CHECK CONSTRAINT [CK_ZipCode]
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddAddress]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[p_AddAddress]
+	@CityName varchar(20),
+	@ZipCode varchar(10),
+	@Street varchar(30),
+	@AddressID int OUTPUT
+AS
+BEGIN
+	
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN ADD_AD
+			DECLARE @ZIP int = (SELECT ZipCodeID FROM ZipCode WHERE ZipCode = @ZipCode)
+			IF(@ZIP IS NULL)
+				INSERT INTO ZipCode(ZipCode)
+					VALUES(@ZipCode)
+					SET @ZIP = @@IDENTITY
+			DECLARE @City int = (SELECT CityID FROM City WHERE CityName = @CityName)
+			IF(@City IS NULL)
+				INSERT INTO City(CityName)
+					VALUES(@CityName)
+					SET @City = @@IDENTITY
+			SET @AddressID = (SELECT AddressID FROM Address 
+			WHERE ZipCodeID = @ZIP and CityID = @City and Street = @Street)
+			IF(@AddressID IS NULL)
+				INSERT INTO Address(CityID,ZipCodeID,Street)
+					VALUES(@City, @ZIP, @Street)
+					SET @AddressID = @@IDENTITY
+			
+		COMMIT TRAN ADD_AD
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_AD
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding new address! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddCompanyEmployee]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddCompanyEmployee]
+	@CompanyClientID int,
+	@FirstName varchar(50),
+	@LastName varchar(50),
+	@CompanyEmployeeID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN ADD_COMP_EMPL
+			SET @CompanyEmployeeID = (SELECT CompanyEmployeeID FROM [Company Clients Employees]
+								Where @FirstName = FirstName and @LastName = LastName and @CompanyClientID = CompanyID)
+			IF(@CompanyEmployeeID IS NULL)
+				INSERT INTO [Company Clients Employees](CompanyID, FirstName, LastName)
+				VALUES(@CompanyClientID, @FirstName, @LastName)
+				SET @CompanyEmployeeID = @@IDENTITY
+		COMMIT TRAN ADD_COMP_EMPL
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_COMP_EMPL
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding a company client employee ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddCompanyReservation]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[p_AddCompanyReservation]
+	@RestaurantName varchar(50),
+	@CompanyName varchar(50),
+	@Date date,
+	@Guests int,
+	@ReservationID int OUTPUT
+AS
+BEGIN
+
+	SET NOCOUNT ON;
+	BEGIN TRY
+	
+		DECLARE @CompanyClientID int
+		DECLARE @RestaurantID int
+		IF(DATEDIFF(DAY, GETDATE(), @Date) < 0)
+			THROW 60000, 'Reservation date is from the past!', 1;
+		IF(@Guests < 2)
+			THROW 60000, 'Number of guests is smaller than 2!', 1;		
+		SET @RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is null)
+			THROW 60000, 'Restauration does not exists!', 1;
+
+		SET @CompanyClientID  = dbo.f_GetCompanyClientByName(@CompanyName, @RestaurantName)
+		IF(@CompanyClientID is null)
+			THROW 60000, 'Company does not exists!', 1;
+		BEGIN TRAN INS_RESERV_COMP
+			DECLARE @StatusID int = dbo.f_GetReservationStatusID('PLACED')
+			INSERT INTO [Company Reservations](CompanyClientID, Date, StatusID, Guests, RestaurantID)
+			VALUES(@CompanyClientID, @Date, @StatusID, @Guests, @RestaurantID)
+			SET @ReservationID = @@IDENTITY
+
+		COMMIT TRAN INS_RESERV_COMP
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN INS_RESERV_COMP
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding a company reservation! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddDish]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[p_AddDish] 
+	@DishName varchar(50),
+	@CategoryName varchar(50),
+	@DishID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @CategoryID int
+	BEGIN TRY
+		BEGIN TRAN ADD_DISH
+			SET @DishID = dbo.f_GetDish(@DishName)
+			EXEC p_AddDishCategory @CategoryName = @CategoryName, @CategoryID = @CategoryID OUTPUT
+			IF(@DishID is null)
+				BEGIN
+					INSERT INTO [Dishes](DishName, CategoryID)
+						VALUES (@DishName, @CategoryID);
+						SET @DishID = @@IDENTITY;
+				END
+			ELSE IF(@CategoryID != (Select CategoryID from [Dishes] where DishName = @DishName))
+				THROW 51000, 'Dish with this name already exists with a different category!', 1;
+		COMMIT TRAN ADD_DISH
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_DISH
+		DECLARE @msg NVARCHAR(2048) ='Error while adding a dish! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddDishCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[p_AddDishCategory] 
+	@CategoryName varchar(50),
+	@CategoryID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		BEGIN TRAN ADD_CATEGORY
+			SET @CategoryID = dbo.f_GetDishCategory(@CategoryName)
+			IF(@CategoryID is null)
+				BEGIN
+					INSERT INTO [Dish Categories](CategoryName)
+						VALUES (@CategoryName);
+						SET @CategoryID = @@IDENTITY;
+				END
+		COMMIT TRAN ADD_CATEGORY
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_CATEGORY
+		DECLARE @msg NVARCHAR(2048) ='Error while searching for a dish category!' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddDishToOrder]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddDishToOrder]
+	@OrderID INT,
+	@DishName VARCHAR(50),
+	@Quantity INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN NEWDISH
+			DECLARE @FillAnOrderDate DATE = (SELECT FillAnOrderDate FROM dbo.Orders WHERE OrderID = @OrderID)
+			DECLARE @RestaurantID INT = (SELECT RestaurantID FROM dbo.Orders WHERE OrderID = @OrderID)
+			IF ((SELECT orderID FROM Orders WHERE OrderID = @OrderID) = NULL)
+				THROW 51000, 'Order does not exists', 1;
+			IF (@Quantity <1)
+				THROW 51000, 'wrong quantity', 1;
+			DECLARE @DishID INT = dbo.f_GetDishFromMenu(@DishName,@RestaurantID, @FillAnOrderDate)
+			IF(@DishID IS NULL)
+				THROW 51000, 'Dish does not exists', 1;
+			IF (EXISTS (SELECT Quantity FROM [Orders Details] 
+						WHERE DishID = @DishID AND OrderID = @OrderID))
+				BEGIN
+					SET @Quantity = @Quantity + (SELECT Quantity FROM [Orders Details] 
+						WHERE DishID = @DishID AND OrderID = @OrderID)
+					UPDATE [Orders Details] 
+					SET Quantity = @Quantity
+					WHERE DishID = @DishID AND OrderID = @OrderID
+				END
+			ELSE
+				BEGIN
+					DECLARE @weekday INT = (SELECT(DATEPART(WEEKDAY,(SELECT FillAnORderDate FROM Orders WHERE OrderID = @OrderID))))
+					DECLARE @FillDate DATE = (SELECT FillAnOrderDate FROM Orders WHERE OrderID = @OrderID)
+					DECLARE @date DATE = (SELECT PlaceAnOrderDate FROM Orders WHERE OrderID = @OrderID)
+					DECLARE @IsWeekend INT = 0
+					SET @IsWeekend =(SELECT CASE
+										WHEN (@weekday = 6 OR @weekday =7 OR @weekday = 1) THEN 1
+										ELSE 0 END)
+					DECLARE @LastMonday DATE = DATEADD(DAY, -(@weekday -2), @FillDate)
+					DECLARE @OrderedEarlyEnough INT = (SELECT CASE
+														WHEN(DATEDIFF(DAY, @date, @LastMonday) >=0) THEN 1
+														ELSE 0 END)
+					IF (dbo.f_IsSeaFood(@DishID) = 1 AND @IsWeekend = 1 AND @OrderedEarlyEnough = 0)
+						THROW 51000, 'its tooo late', 1;
+					IF (@IsWeekend = 0)
+						THROW 51000, 'it is not weekend', 1;
+					ELSE
+						BEGIN
+							INSERT INTO [Orders Details] (OrderID, DishID, Quantity)
+								VALUES (@OrderID, @DishID,@Quantity)
+						END
+				END
+		COMMIT TRAN NEWDISH
+    END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN NEWDISH
+		DECLARE @msg NVARCHAR(2048) ='Error while adding dish to Order ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddEmployee]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+CREATE PROCEDURE [dbo].[p_AddEmployee] 
+	@RestaurantName VARCHAR(50),
+	@FirstName VARCHAR(50),
+	@LastName VARCHAR(50),
+	@CategoryName VARCHAR(50),
+	@Pesel VARCHAR(11),
+	@EmployeeID INT OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @CategoryID INT
+	DECLARE @RestaurantID INT
+	BEGIN TRY
+		BEGIN TRAN ADD_EMPL
+			SET @RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+			IF(@RestaurantID IS NULL)
+				THROW 60000, 'Restaurant does not exists!', 1;
+			EXEC p_AddEmployeeCategory @CategoryName = @CategoryName, @CategoryID = @CategoryID OUTPUT
+			SET @EmployeeID = dbo.f_GetEmployee(@Pesel, @RestaurantID)
+			IF(@EmployeeID IS NULL)
+				BEGIN
+					INSERT INTO [Employees](Firstname, Lastname, [Employee Category], RestaurantID, PESEL)
+						VALUES (@FirstName, @LastName, @CategoryID, @RestaurantID, @Pesel);
+						SET @EmployeeID = @@IDENTITY;
+				END
+			ELSE IF(@CategoryID != (SELECT [Employee Category] FROM [Employees] 
+									WHERE PESEL = @Pesel))
+					THROW 51000, 'This Employee already exists, but in different category!', 1;
+		COMMIT TRAN ADD_EMPL
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_EMPL
+		DECLARE @msg NVARCHAR(2048) ='Error while adding an employee! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddEmployeeCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE PROCEDURE  [dbo].[p_AddEmployeeCategory]
+	@CategoryName varchar(50),
+	@CategoryID int OUTPUT
+AS
+BEGIN
+	
+	SET NOCOUNT ON;
+	BEGIN TRY
+		 SET @CategoryID = dbo.f_GetEmployeeCategory(@CategoryName)
+		IF(@CategoryID is null)
+			BEGIN
+				INSERT INTO [Employee Categories]([Category Name])
+						VALUES(@CategoryName);
+			END
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while searching for employee category! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+
+				
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddGuestForCompanyReservation]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[p_AddGuestForCompanyReservation]
+	@ReservationID int,
+	@FirstName varchar(50),
+	@LastName varchar(50)
+AS
+BEGIN
+	BEGIN TRY
+		BEGIN TRAN ADD_GUEST
+			DECLARE @CompanyClientID int = (SELECT CompanyClientID FROM [Company Reservations]
+												Where @ReservationID = ReservationID)
+			IF(@CompanyClientID IS NULL)
+				THROW 60000, 'Restaurant does not exists!', 1;
+			DECLARE @CompanyClientEmployeeID INT
+			EXEC p_AddCompanyEmployee @CompanyClientID = @CompanyClientID, @FirstName = @FirstName, @LastName = @LastName, @CompanyEmployeeID = @CompanyClientEmployeeID OUTPUT
+			INSERT INTO [Company Reservations Details](ReservationID, CompanyEmployeeID)
+			VALUES(@ReservationID, @CompanyClientEmployeeID)
+		COMMIT TRAN ADD_GUEST
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_GUEST
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding guest to company reservation! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddHalfProduct]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+CREATE PROCEDURE [dbo].[p_AddHalfProduct] 
+	@ProductName varchar(50),
+	@CategoryName varchar(50),
+	@ProductID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DECLARE @CategoryID int
+	BEGIN TRY
+		BEGIN TRAN ADD_HALF_PRODUCT
+			SET @ProductID = dbo.f_GetHalfProduct(@ProductName)
+			EXEC p_AddHalfProductCategory @CategoryName = @CategoryName, @CategoryID = @CategoryID OUTPUT
+			IF(@ProductID is null)
+				BEGIN
+					INSERT INTO [Half Product Names](ProductName, CategoryID)
+						VALUES (@ProductName, @CategoryID);
+						SET @ProductID = @@IDENTITY;
+				END
+			ELSE IF(@CategoryID != (Select CategoryID from [Half Product Names] where ProductName = @ProductName))
+					THROW 51000, 'Half product with this name already exists with different category!', 1;
+		COMMIT TRAN ADD_HALF_PRODUCT
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_HALF_PRODUCT
+		DECLARE @msg NVARCHAR(2048) ='Error while adding for a half product! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddHalfProductCategory]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE PROCEDURE [dbo].[p_AddHalfProductCategory] 
+	@CategoryName varchar(50),
+	@CategoryID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		BEGIN TRAN ADD_CATEGORY
+			SET @CategoryID = dbo.f_GetHalfProductCategory(@CategoryName)
+			IF(@CategoryID is null)
+				BEGIN
+					INSERT INTO [Half Products Categories]([Category Name])
+						VALUES (@CategoryName);
+						SET @CategoryID = @@IDENTITY;
+				END
+		COMMIT TRAN ADD_CATEGORY
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_CATEGORY
+		DECLARE @msg NVARCHAR(2048) ='Error while adding a half product category' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddHalfProductToDish]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddHalfProductToDish]
+	@ProductName varchar(50),
+	@DishName varchar(50)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		Declare @ProductID int = dbo.f_GetHalfProduct(@ProductName)
+		Declare @DishID int = dbo.f_GetDish(@DishName)
+		IF(@ProductID is null)
+			THROW 51000, 'Half Product does not exist', 1;
+		IF(@DishID is null)
+			THROW 51000, 'Dish does not exist', 1;
+		IF((select DishID from [Half Products] where DishID = @DishID and ProductID = @ProductID) is null)
+			BEGIN
+				INSERT INTO [Half Products] (ProductID,DishID)
+					Values (@ProductID, @DishID)
+			END
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_HALF_PRODUCT
+		DECLARE @msg NVARCHAR(2048) ='Error while adding for a half product to Dish! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddIndividualReservation]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE PROCEDURE [dbo].[p_AddIndividualReservation]
+	@RestaurantName VARCHAR(50),
+	@Phone VARCHAR(15),
+	@Date DATE,
+	@Guests INT,
+	@OrderID INT,
+	@ReservationID INT OUTPUT
+AS
+BEGIN
+
+	SET NOCOUNT ON;
+	BEGIN TRY
+	
+		DECLARE @IndividualClientID INT
+		DECLARE @RestaurantID INT
+		BEGIN TRAN INS_RESERV_IND
+		IF(DATEDIFF(DAY, GETDATE(), @Date) < 0)
+			THROW 60000, 'Reservation date is from the past!', 1;
+
+		IF(@Guests < 2)
+			THROW 60000, 'Number of guests is smaller than 2!', 1;	
+			
+		SET @RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID IS NULL)
+			THROW 60000, 'Restauration does not exists!', 1;
+
+		SET @IndividualClientID  = dbo.f_GetIndividualClientID(@Phone, @RestaurantName)
+		IF(@IndividualClientID IS NULL)
+			THROW 60000, 'Client does not exists!', 1;
+		
+		IF NOT EXISTS (SELECT * FROM Orders WHERE OrderID = @OrderID AND RestaurantID = @RestaurantID)
+			THROW 60000, 'OrderID is incorrect! Individual Client cannot make a reservation without a valid order!', 1;
+		
+		IF (dbo.f_GetNumberOrderFromClient(@IndividualClientID) < 50)
+			IF(dbo.f_GetReducedPrice(@OrderID) < 200)
+				THROW 60000, 'Client does not have enough previous orders and price of current order is less than 200!', 1;
+		
+			DECLARE @StatusID INT = dbo.f_GetReservationStatusID('PLACED')
+			INSERT INTO [IndividualReservations](ClientID, OrderID, Date, StatusID, Guests)
+			VALUES(@IndividualClientID, @OrderID, @Date, @StatusID, @Guests)
+			SET @ReservationID = @@IDENTITY
+		COMMIT TRAN INS_RESERV_IND
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN INS_RESERV_IND
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding an individual reservation! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddOrderStatus]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddOrderStatus]
+	@OrderStatusDescription varchar(50),
+	@OrderStatusID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN ADD_STATUS
+			SET @OrderStatusID =(select StatusID from [Order Status] where StatusDescription = @OrderStatusDescription)
+			IF (@OrderStatusID is null)
+				BEGIN
+					INSERT INTO [Order Status](StatusDescription)
+						VALUES (@OrderStatusDescription)
+					SET @OrderStatusID =(select StatusID from [Order Status] where StatusDescription = @OrderStatusDescription)
+				END
+		COMMIT TRAN ADD_STATUS
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_STATUS
+		DECLARE @msg NVARCHAR(2048) ='Error while appending to menu! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddOrderType]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddOrderType]
+	@OrderPlace varchar(50),
+	@OrderTypeID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN ADD_TYPE
+			SET @OrderTypeID =(select OrderTypeID from [Order Type] where [Order place] = @OrderPlace)
+			IF (@OrderTypeID is null)
+				BEGIN
+					INSERT INTO [Order Type]([Order place])
+						VALUES (@OrderPlace)
+					SET @OrderTypeID =(select OrderTypeID from [Order Type] where [Order place] = @OrderPlace)
+				END
+		COMMIT TRAN ADD_TYPE
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_TYPE
+		DECLARE @msg NVARCHAR(2048) ='Error while appending to menu! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddReservationStatus]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddReservationStatus]
+	@ReservationStatusDescription varchar(50),
+	@ReservationStatusID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		SET @ReservationStatusID = (select StatusID from [Reservation Status] where [Status Description] like @ReservationStatusDescription)
+		IF (@ReservationStatusID is null)
+			BEGIN
+				INSERT INTO [Reservation Status]([Status Description])
+				VALUES (@ReservationStatusDescription)
+				SET @ReservationStatusID = @@IDENTITY
+			END
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(2048) ='Error while adding a reservation status! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddRestaurant]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[p_AddRestaurant] 
+	@RestaurantName varchar(50),
+	@CityName varchar(20) = NULL,
+	@ZipCode varchar(10) = NULL,
+	@Street varchar(30) = NULL,
+	@RestaurantID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	BEGIN TRY
+		BEGIN TRAN ADD_RESTAURANT
+			SET @RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+			DECLARE @AdID int
+			IF(@RestaurantID is null)
+				BEGIN
+					IF(@CityName is null or @ZipCode is null or @Street is null)
+						THROW 60000, 'Invalid address data!', 1;
+					exec p_AddAddress @CityName = @CityName, @ZipCode = @ZipCode, 
+					@Street = @Street, @AddressID = @AdID OUTPUT
+					INSERT INTO [Restaurants]([RestaurantName], Address)
+						VALUES (@RestaurantName, @AdID);
+						SET @RestaurantID = @@IDENTITY;
+				END
+		COMMIT TRAN ADD_RESTAURANT
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_RESTAURANT
+		DECLARE @msg NVARCHAR(2048) ='Error while adding restaurant!' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddTable]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE  [dbo].[p_AddTable]
+	@RestaurantName varchar(50),
+	@MaxSeats int,
+	@TableID int OUTPUT
+AS
+BEGIN
+	
+	SET NOCOUNT ON;
+	DECLARE @RestaurantID int
+	BEGIN TRY
+		 SET @RestaurantID = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is not null)
+			BEGIN
+				INSERT INTO Tables(MaxSeats, RestaurantID)
+						VALUES(@MaxSeats, @RestaurantID);
+			END
+		ELSE
+			THROW 60000, 'Restaurant does not exists!', 1;
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while adding table! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+
+				
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddTableRestriction]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[p_AddTableRestriction]  
+	@TableID int,
+	@AfterReduce int,
+	@StartDate date,
+	@EndDate date
+AS
+BEGIN
+	BEGIN TRY
+		BEGIN TRAN ADD_RESTR
+		DECLARE @Colliding int = dbo.f_GetCollidingRestriction(@TableID, @StartDate, @EndDate)
+		IF (DATEDIFF(DAY, @StartDate, @EndDate) < 0)
+			THROW 52000, 'Start date must precedes end date!',1;
+		ELSE IF (@Colliding is null)
+			BEGIN
+				INSERT INTO [Restrictions](TableID, DateFrom, DateTo, ReducedSeats)
+						VALUES (@TableID, @StartDate, @EndDate, @AfterReduce);
+			END
+		ELSE
+			BEGIN
+				UPDATE [Restrictions]
+				SET DateFrom = @StartDate, DateTo = @EndDate, ReducedSeats = @AfterReduce
+				WHERE RestrictionID = @Colliding;
+			END
+		COMMIT TRAN ADD_RESTR			
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN ADD_RESTR
+		DECLARE @msg NVARCHAR(2048) ='Error while adding table restriction!' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_AddToMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_AddToMenu]
+		@RestaurantName VARCHAR(50),
+		@DishName VARCHAR(50),
+		@InDate DATE,
+		@OutDate DATE = NULL
+
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+			BEGIN TRAN INTOMENU
+				DECLARE @DishID int = dbo.f_GetDish(@DishName)
+				DECLARE @RestaurantID INT =  dbo.f_GetRestaurant(@RestaurantName)
+				DECLARE @Date DATE = GETDATE();
+				IF(DATEDIFF(DAY, GETDATE(), @InDate)<=0)
+					THROW 51000, 'You can not change menu in this date', 1;
+				IF(@DishID IS NULL)
+						THROW 51000, 'Dish does not exist!', 1;
+				IF(@RestaurantID IS NULL)
+						THROW 51000, 'Restaurant does not exist', 1;
+				IF NOT EXISTS (SELECT * FROM dbo.[DishPrice History] WHERE
+				DishID = @DishID AND RestaurantID = @RestaurantID 
+				AND DATEDIFF(DAY,[Start Date], @InDate) >= 0 AND  (DATEDIFF(DAY,[End Date], @OutDate) <= 0 OR [End Date] IS NULL))
+					THROW 51000, 'Dish does not have a price!',1;
+
+				BEGIN
+				DECLARE @EndDate DATE = (SELECT OutDate FROM [Menu]
+										WHERE DishID = @DishID AND
+										RestaurantID = @RestaurantID)
+				IF EXISTS (SELECT * FROM [Menu]
+							WHERE DishID = @DishID AND RestaurantID = @RestaurantID)
+					BEGIN
+					IF (@EndDate IS NULL OR @EndDate > @InDate)
+						BEGIN
+							UPDATE [Menu]
+							SET [OutDate] = @OutDate
+							WHERE DishID = @DishID AND RestaurantID = @RestaurantID
+						END
+					ELSE IF (DATEDIFF(DAY, @EndDate, @InDate) >=31)
+						BEGIN
+							UPDATE [Menu]
+							SET [InDate] = @InDate, [OutDate] = @OutDate
+							WHERE DishID = @DishID AND RestaurantID = @RestaurantID
+							--update [Menu]
+							--set [OutDate] = @OutDate
+							--Where DishID = @DishID and RestaurantID = @RESTAURANID
+						END
+					ELSE
+						THROW 51000, 'Dish was in menu not enough long time ago', 1;
+					END
+				ELSE
+					BEGIN
+						INSERT INTO [Menu](RestaurantID, DishID, InDate, OutDate)
+						VALUES (@RestaurantID, @DishID, @InDate, @OutDate);
+					END
+				END
+			COMMIT TRAN INTOMENU
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN INTOMENU
+		DECLARE @msg NVARCHAR(2048) ='Error while appending to menu! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ChangeCompanyReservationStatus]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+
+CREATE PROCEDURE [dbo].[p_ChangeCompanyReservationStatus]
+	@RestaurantName varchar(50),
+	@ReservationID int,
+	@NewStatus varchar(50)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CHANGE_STATUS
+		DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is null)
+			THROW 60000, 'Restaurant does not exist!', 1;
+		ELSE IF NOT EXISTS (SELECT * FROM [Company Reservations] WHERE ReservationID = @ReservationID)
+			THROW 60000, 'Reservation does not exist!', 1;
+
+		DECLARE @StatusID int = dbo.f_GetReservationStatusID(@NewStatus)
+		IF(@StatusID is null)
+			THROW 60000,'Invalid new status description!', 1;		
+		UPDATE [Company Reservations]
+		SET StatusID = @StatusID
+		WHERE ReservationID = @ReservationID;
+
+		COMMIT TRAN CHANGE_STATUS
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CHANGE_STATUS
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while changing company reservation status! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ChangeDiscountsParameters]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_ChangeDiscountsParameters]
+	@RestaurantName varchar(50),
+	@Z1 int NULL,
+	@K1 money NULL,
+	@R1 decimal(18,8) NULL,
+	@K2 money  NULL,
+	@R2 decimal(18,8)  NULL,
+	@D1 int NULL,
+	@K3 money NULL,
+	@R3 decimal(18,8) NULL,
+	@D2 int NULL,
+	@FZ int NULL,
+	@FK1 money NULL,
+	@FR1 decimal(18,8) NULL,
+	@FM decimal(18,8) NULL,
+	@FK2 money NULL,
+	@FR2 decimal(18,8) NULL
+AS
+BEGIN
+	BEGIN TRY
+		BEGIN TRAN CHANGE_PARAMS
+			DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+			IF((select RestaurantID From [Discounts-parameters] where RestaurantID = @RestaurantID) is null)
+				BEGIN
+					INSERT INTO [Discounts-parameters]
+					(RestaurantID)
+					values (@RestaurantID)
+				END
+			IF(@Z1 is not null)
+				UPDATE [Discounts-parameters]
+				SET Z1 = @Z1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@K1 is not null)
+				UPDATE [Discounts-parameters]
+				SET K1 = @K1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@R1 is not null)
+				UPDATE [Discounts-parameters]
+				SET [R1%] = @R1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@K2 is not null)
+				UPDATE [Discounts-parameters]
+				SET K2 = @K2
+				WHERE RestaurantID = @RestaurantID;
+			IF(@R2 is not null)
+				UPDATE [Discounts-parameters]
+				SET [R2%] = @R2
+				WHERE RestaurantID = @RestaurantID;
+			IF(@D1 is not null)
+				UPDATE [Discounts-parameters]
+				SET D1 = @D1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@K3 is not null)
+				UPDATE [Discounts-parameters]
+				SET K3 = @K3
+				WHERE RestaurantID = @RestaurantID;
+			IF(@R3 is not null)
+				UPDATE [Discounts-parameters]
+				SET [R3%] = @R3
+				WHERE RestaurantID = @RestaurantID;
+			IF(@D2 is not null)
+				UPDATE [Discounts-parameters]
+				SET D2 = @D2
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FZ is not null)
+				UPDATE [Discounts-parameters]
+				SET FZ = @FZ
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FK1 is not null)
+				UPDATE [Discounts-parameters]
+				SET FK1 = @FK1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FR1 is not null)
+				UPDATE [Discounts-parameters]
+				SET [FR1%] = @FR1
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FR2 is not null)
+				UPDATE [Discounts-parameters]
+				SET [FR2%] = @FR2
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FK2 is not null)
+				UPDATE [Discounts-parameters]
+				SET [FK2] = @FK2
+				WHERE RestaurantID = @RestaurantID;
+			IF(@FM is not null)
+				UPDATE [Discounts-parameters]
+				SET [FM%] = @FM
+				WHERE RestaurantID = @RestaurantID;
+		COMMIT TRAN CHANGE_PARAMS
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CHANGE_PARAMS
+		DECLARE @msg NVARCHAR(2048) ='Error while changing discounts parameters!' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ChangeDishPrice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+CREATE PROCEDURE [dbo].[p_ChangeDishPrice]
+	@RestaurantName VARCHAR(50),
+	@DishName VARCHAR(50),
+	@Price MONEY,
+	@ChangeFrom DATE,
+	@DishID INT OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CHANGE_PRICE
+		DECLARE @RestaurantID INT = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID IS NULL)
+			THROW 60000, 'Given restaurant does not exists!', 1;
+		ELSE
+			SET @DishID = dbo.f_GetDish(@DishName)
+			IF(@DishID IS NULL)
+				THROW 60000, 'Given dish does not exists!', 1;
+			ELSE
+				BEGIN
+					DECLARE @ChangeID  INT = (SELECT ID FROM [DishPrice History]
+												WHERE DishID = @DishID AND [End Date] IS NULL AND RestaurantID = @RestaurantID)
+					IF(@ChangeID IS NOT NULL)
+						BEGIN
+							UPDATE [DishPrice History]
+							SET [End Date] = @ChangeFrom
+							WHERE ID = @ChangeID;
+						END
+
+					INSERT INTO [DishPrice History](DishID, Price, [Start Date], [End Date], RestaurantID)
+							VALUES (@DishID, @Price, @ChangeFrom, NULL, @RestaurantID);
+				END
+		COMMIT TRAN CHANGE_PRICE
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CHANGE_PRICE
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while changing a dish price! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+	
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ChangeIndividualReservationStatus]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+
+CREATE PROCEDURE [dbo].[p_ChangeIndividualReservationStatus]
+	@RestaurantName varchar(50),
+	@ReservationID int,
+	@NewStatus varchar(50)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CHANGE_STATUS
+		DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is null)
+			THROW 60000, 'Restaurant does not exist!', 1;
+		ELSE IF NOT EXISTS (SELECT * FROM [IndividualReservations] WHERE ReservationID = @ReservationID)
+			THROW 60000, 'Reservation does not exist!', 1;
+
+		DECLARE @StatusID int = dbo.f_GetReservationStatusID(@NewStatus)
+		IF(@StatusID is null)
+			THROW 60000,'Invalid new status description!', 1;
+			
+		UPDATE [IndividualReservations]
+		SET StatusID = @StatusID
+		WHERE ReservationID = @ReservationID;
+
+		COMMIT TRAN CHANGE_STATUS
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CHANGE_STATUS
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while changing individual reservation status! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ChangeOrderStatus]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+-- =============================================
+CREATE PROCEDURE [dbo].[p_ChangeOrderStatus]
+	@OrderID INT,
+	@NewStatus VARCHAR(50),
+	@EmployerID INT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CHANGE_STATUS
+		
+		IF NOT EXISTS (SELECT * FROM [Orders] WHERE OrderID = @OrderID)
+			THROW 60000, 'Order does not exist!', 1;
+
+		DECLARE @StatusID INT = dbo.f_GetOrderStatusID(@NewStatus)
+		IF(@StatusID IS NULL)
+			THROW 60000,'Invalid new status description!', 1;
+		DECLARE @CurrStatusID INT = (SELECT StatusID FROM dbo.Orders WHERE OrderID = @OrderID)
+		IF( @CurrStatusID != @StatusID)
+		BEGIN
+			UPDATE [Orders]
+			SET StatusID = @StatusID,
+			EmployeeID = @EmployerID
+			WHERE OrderID = @OrderID;
+		END
+
+		COMMIT TRAN CHANGE_STATUS
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CHANGE_STATUS
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while changing order status! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ConfirmCompanyReservation]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+
+CREATE PROCEDURE [dbo].[p_ConfirmCompanyReservation]
+	@RestaurantName varchar(50),
+	@ReservationID int,
+	@TableID int
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CONFIRM_RESERV
+		DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is null)
+			THROW 60000, 'Restaurant does not exist!', 1;
+		ELSE IF NOT EXISTS (SELECT * FROM [Company Reservations] WHERE ReservationID = @ReservationID)
+			THROW 60000, 'Reservation does not exist!', 1;
+		BEGIN
+		DECLARE @StatusID int = dbo.f_GetReservationStatusID('CONFIRMED')
+		DECLARE @Day date = (SELECT Date FROM [Company Reservations] WHERE ReservationID = @ReservationID)
+		IF ((SELECT count(*) FROM dbo.f_GetReservationsFromDay(@Day, @RestaurantName)
+					WHERE TableID = @TableID) > 0)
+			THROW 60000, 'Cannot assign tables to reservation! Table is already reserved', 1;
+
+			
+		UPDATE [Company Reservations]
+		SET [TableID] = @TableID, StatusID = @StatusID
+		WHERE ReservationID = @ReservationID;
+		END
+		COMMIT TRAN CONFIRM_RESERV
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CONFIRM_RESERV
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while confirming company reservation! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_ConfirmIndividualReservation]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+
+CREATE PROCEDURE [dbo].[p_ConfirmIndividualReservation]
+	@RestaurantName varchar(50),
+	@ReservationID int,
+	@TableID int
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN CONFIRM_RESERV
+		DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+		IF(@RestaurantID is null)
+			THROW 60000, 'Restaurant does not exist!', 1;
+		ELSE IF NOT EXISTS (SELECT * FROM [IndividualReservations] WHERE ReservationID = @ReservationID)
+			THROW 60000, 'Reservation does not exist!', 1;
+
+		DECLARE @StatusID int =  dbo.f_GetReservationStatusID('CONFIRMED')
+		DECLARE @Day date = (SELECT Date FROM IndividualReservations WHERE ReservationID = @ReservationID)
+		IF ((SELECT count(*) FROM dbo.f_GetReservationsFromDay(@Day, @RestaurantName)
+					WHERE TableID = @TableID) > 0)
+			THROW 60000, 'Cannot assign tables to reservation! Table is already reserved', 1;
+
+		UPDATE [IndividualReservations]
+		SET [TableID] = @TableID, StatusID = @StatusID
+		WHERE ReservationID = @ReservationID;
+
+		COMMIT TRAN CONFIRM_RESERV
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN CONFIRM_RESERV
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while confirming company reservation! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_CreateOrder]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_CreateOrder] 
+	@NIP varchar(50) = NULL,
+	@Telephone varchar(50) = NULL,
+	@RestaurantName varchar(50),
+	@FillAnOrderDate date,
+	@OrderType varchar(50),
+	@OrderID int = NULL OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN NewOrder
+			Declare @StatusID int = dbo.f_GetOrderStatusID('PLACED')
+			IF(@StatusID is null)
+				THROW 60000,'Invalid status description!', 1;
+
+			Declare @TypeID int = dbo.f_GetOrderTypeID(@OrderType)
+			IF(@TypeID is null)
+				THROW 60000,'Invalid order type description!', 1;
+			Declare @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+			
+			IF (DATEDIFF(day,getdate(), @FillAnOrderDate) <0)
+				THROW 51000, 'WRONG Date', 1;
+			IF not (exists (select OrderTypeID from [Order Type] where [Order place] = @OrderType))
+				THROW 51000, 'Order Type does  not exists', 1;
+			IF (@NIP is null and @Telephone is null)
+				THROW 51000, 'Needed NIP if bussines client or Telephone if Individual', 1;
+			ELSE IF (@NIP is not NULL)
+				BEGIN
+					Declare @CompanyClientID int = dbo.f_GetCompanyClientID(@NIP, @RestaurantName)
+					IF (@CompanyClientID is null)
+						THROW 51000, 'Company Client is not registered', 1;
+					ELSE
+						BEGIN
+							Insert INTO Orders (ClientID, PlaceAnOrderDate, FillAnOrderDate, StatusID, OrderTypeID, RestaurantID)
+								values (@CompanyClientID, getdate(), @FillAnOrderDate, @StatusID, @TypeID, @RestaurantID)
+								SET @OrderID = @@IDENTITY
+						END
+				END
+			ELSE
+				BEGIN
+					Declare @IndividualClientID int = dbo.f_GetIndividualClientID(@Telephone, @RestaurantName)
+					IF (@IndividualClientID is null)
+						THROW 51000, 'Individual Client is not registered', 1;
+					ELSE
+						BEGIN
+							Insert INTO Orders (ClientID, PlaceAnOrderDate, FillAnOrderDate, StatusID, OrderTypeID, RestaurantID)
+							values (@IndividualClientID, getdate(), @FillAnOrderDate, @StatusID, @TypeID, @RestaurantID)
+							SET @OrderID = @@IDENTITY
+						END
+				END
+		COMMIT TRAN NewOrder
+    END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN NewOrder
+		DECLARE @msg NVARCHAR(2048) ='Error while creating new order ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_GenerateMonthlyInvoice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[p_GenerateMonthlyInvoice] 
+	@CompanyName VARCHAR(50),
+	@RestaurantName VARCHAR(50)
+AS
+BEGIN
+	BEGIN TRY
+	BEGIN TRAN GEN_M_INV
+	SET NOCOUNT ON;
+	DECLARE @ClientID int = dbo.f_GetCompanyClientByName(@CompanyName, @RestaurantName)
+	DECLARE @CAddressID int = (SELECT Address FROM Clients WHERE ClientID = @ClientID)
+	DECLARE @RestaurantID int = (SELECT RestaurantID FROM Clients WHERE ClientID = @ClientID)
+	DECLARE @RAddressID int = (SELECT Address FROM Restaurants WHERE RestaurantID = @RestaurantID)
+
+	IF(@ClientID IS NULL)
+			THROW 60000, 'Client does not exist Cannot prepare an invoice!', 1;
+
+	IF(@CAddressID IS NULL)
+		THROW 60000, 'Client does not have address! Cannot prepare an invoice!', 1;
+
+	DECLARE @Orders TABLE(OrderID int)
+	INSERT INTO @Orders(OrderID)
+	(SELECT vO.OrderID FROM v_Orders AS vO
+	INNER JOIN Orders  AS O ON O.OrderID = vO.OrderID 
+	WHERE vO.ClientID = @ClientID and DATEDIFF(DAY, vO.FillAnOrderDate, GETDATE()) >= 0 
+	AND MONTH(GETDATE()) = MONTH(vO.FillAnOrderDate)
+	AND (YEAR(GETDATE()) = YEAR(vO.FillAnOrderDate))
+	AND vO.StatusDescription LIKE 'REALISED'
+	AND NOT EXISTS(SELECT OrderID FROM [Invoice Details] WHERE OrderID = vO.OrderID))
+	
+	IF((SELECT COUNT(*) FROM @Orders) = 0)
+		BEGIN
+			;THROW 60000, 'Client does not have any realised orders in this month!',1;
+		END
+	ELSE
+		BEGIN
+		INSERT INTO Invoices(Date, ClientID)
+		VALUES(GETDATE(), @ClientID)
+		DECLARE @InvoiceID INT = @@IDENTITY
+
+		INSERT INTO [Invoice Details](InvoiceID, OrderID)
+		SELECT @InvoiceID, O.* FROM @Orders AS O
+		
+
+		SELECT @InvoiceID AS InvoiceNumber, Date FROM Invoices
+			WHERE InvoiceID = @InvoiceID
+
+
+		SELECT 'Seller' AS Role, RestaurantName AS CompanyName, NIP, (SELECT CityName + ' ' + ZipCode + ' ' + Street FROM dbo.f_GetFullAddress(@RAddressID)) AS Address FROM Restaurants
+		WHERE RestaurantID = @RestaurantID
+		UNION
+		SELECT 'Buyer' AS Role, CompanyName AS Buyer, NIP, (SELECT CityName + ' ' + ZipCode + ' ' + Street FROM dbo.f_GetFullAddress(@CAddressID)) AS Address FROM [Company Clients] AS CC
+		INNER JOIN Clients ON Clients.ClientID = CC.ClientID
+		WHERE CC.ClientID = @ClientID
+		ORDER BY Role DESC
+
+
+		SELECT V.OrderID, PlaceAnOrderDate, FillAnOrderDate, [Dish Name], Quantity, UnitPrice, [Total price],  [Order place] FROM v_Orders AS V
+		WHERE V.OrderID IN (SELECT OrderID FROM @Orders)
+
+		DECLARE @ReducedPrice money = (SELECT SUM(dbo.f_GetReducedPrice(V.OrderID)) FROM v_Orders AS V
+										WHERE V.OrderID IN (SELECT OrderID FROM @Orders))
+
+		SELECT ISNULL(SUM([Total Price]),0) AS TotalPrice, ISNULL((SUM([Total Price]) - @ReducedPrice),0) AS Discount, ISNULL(@ReducedPrice,0) AS FinalPrice  FROM v_Orders AS V
+		WHERE V.OrderID IN (SELECT OrderID FROM @Orders)
+	
+	END
+	COMMIT TRAN GEN_M_INV
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN GEN_M_INV
+		DECLARE @msg NVARCHAR(2048) =
+		'Error while generating monthly invoice! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1
+	END CATCH
+
+
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_GenerateSingleInvoice]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[p_GenerateSingleInvoice]
+	@OrderID INT
+AS
+BEGIN
+	BEGIN TRY
+	IF NOT EXISTS(SELECT * FROM Orders WHERE OrderID = @OrderID)
+		THROW 60000, 'Order does not exists!', 1;
+	DECLARE @ClientID int = (SELECT ClientID FROM Orders WHERE OrderID = @OrderID)
+	DECLARE @CAddressID int = (SELECT Address FROM Clients WHERE ClientID = @ClientID)
+	IF(@CAddressID IS NULL)
+		THROW 60000, 'Client does not have address! Cannot prepare an invoice!', 1;
+	BEGIN TRAN GEN_INV
+		DECLARE @InvoiceID INT
+		IF NOT EXISTS(SELECT OrderID FROM [Invoice Details] WHERE OrderID = @OrderID)
+			BEGIN
+			INSERT INTO Invoices(Date, ClientID)
+			VALUES(GETDATE(), @ClientID)
+			SET @InvoiceID = @@IDENTITY
+
+			INSERT INTO [Invoice Details](InvoiceID, OrderID)
+			VALUES(@InvoiceID, @OrderID)
+			END
+		ELSE 
+			BEGIN
+			SET @InvoiceID = (SELECT InvoiceID FROM [Invoice Details] WHERE OrderID = @OrderID)
+			END
+		BEGIN
+		DECLARE @RestaurantID INT = (SELECT RestaurantID FROM Orders WHERE OrderID = @OrderID)
+		DECLARE @RAddressID INT = (SELECT Address FROM Restaurants WHERE RestaurantID = @RestaurantID)
+
+		SELECT I.InvoiceID AS InvoiceNumber, I.Date FROM Invoices AS I
+		INNER JOIN [Invoice Details] AS ID ON ID.InvoiceID = I.InvoiceID
+		WHERE ID.OrderID = @OrderID
+
+		SELECT 'Seller' AS Role, RestaurantName AS CompanyName, NIP, (SELECT CityName + ' ' + ZipCode + ' ' + Street FROM dbo.f_GetFullAddress(@RAddressID)) AS Address FROM Restaurants
+		WHERE RestaurantID = @RestaurantID
+		UNION
+		SELECT 'Buyer' AS Role, CompanyName AS Buyer, NIP, (SELECT CityName + ' ' + ZipCode + ' ' + Street FROM dbo.f_GetFullAddress(@CAddressID)) AS Address FROM [Company Clients] AS CC
+		INNER JOIN Clients ON Clients.ClientID = CC.ClientID
+		WHERE CC.ClientID = @ClientID
+		ORDER BY Role DESC
+		
+		SELECT OrderID, PlaceAnOrderDate, FillAnOrderDate, [Dish Name], Quantity, UnitPrice, [Total price],  [Order place] FROM v_Orders
+		WHERE OrderID = @OrderID
+		DECLARE @ReducedPrice money = dbo.f_GetReducedPrice(@OrderID)
+		SELECT ISNULL(SUM([Total Price]),0) AS TotalPrice, ISNULL((SUM([Total Price]) - @ReducedPrice),0) AS Discount, ISNULL(@ReducedPrice,0) AS FinalPrice  FROM v_Orders AS vO
+		INNER JOIN Orders AS O ON O.OrderID = vO.OrderID 
+		WHERE vO.OrderID = @OrderID
+		END
+	COMMIT TRAN GEN_INV
+
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN GEN_INV;
+		THROW 60000, 'Error while generating single invoice!', 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_InsertClient]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[p_InsertClient]
+	@RestaurantID int,
+	@Phone varchar(15),
+	@Email varchar(50) = NULL,
+	@CityName varchar(20) = NULL,
+	@ZipCode varchar(10) = NULL,
+	@Street varchar(30) = NULL, 
+	@ClientID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+	IF(@CityName is not null and @ZipCode is not null and @Street is not null)
+		DECLARE @AdID int
+		exec p_AddAddress @CityName = @CityName, @ZipCode = @ZipCode, @Street = @Street, @AddressID = @AdID OUTPUT
+	INSERT INTO Clients(Telephone, Email, RestaurantID, Address)
+		VALUES(@Phone, @Email, @RestaurantID, @AdID);
+	SET @ClientID = @@IDENTITY
+	END TRY
+	BEGIN CATCH
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while inserting a client! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_InsertClientCompany]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+CREATE PROCEDURE [dbo].[p_InsertClientCompany]
+	@CompanyName varchar(50),
+	@RestaurantName varchar(50),
+	@phone varchar(15),
+	@email varchar(50) = NULL,
+	@CityName varchar(20) = NULL,
+	@ZipCode varchar(10) = NULL,
+	@Street varchar(30) = NULL,
+	@NIP varchar(50),
+	@ClientID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN INSERT_COMP
+			DECLARE @RestaurantID int = dbo.f_GetRestaurant(@RestaurantName)
+
+			IF (@RestaurantID is not null)
+				BEGIN 
+					EXEC p_insertClient @RestaurantID = @RestaurantID, 
+					@Phone = @Phone, @Email = @Email, @CityName = @CityName, 
+					@ZipCode = @ZipCode, @Street = @Street, @ClientID = @ClientID OUTPUT
+					INSERT INTO [Company Clients](ClientID, NIP, CompanyName)
+						VALUES(@ClientID, @NIP, @CompanyName);
+				END
+			ELSE
+				THROW 60000,'Restaurant does not exist!', 1;
+		COMMIT TRAN INSERT_COMP
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN INSERT_COMP
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while inserting a company client! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+		END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_InsertClientIndividual]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE PROCEDURE [dbo].[p_InsertClientIndividual]
+	@RestaurantName varchar(50),
+	@Phone varchar(15),
+	@Email varchar(50) = NULL,
+	@FirstName varchar(50) = NULL,
+	@LastName varchar(50) = NULL,
+	@CityName varchar(20) = NULL,
+	@ZipCode varchar(10) = NULL,
+	@Street varchar(30) = NULL,
+	@ClientID int OUTPUT
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+		BEGIN TRAN INSERT_IND
+			DECLARE @RestaurantID int = dbo.f_GetResturant(@RestaurantName)
+
+			IF (@RestaurantID is not null)
+				BEGIN 
+					EXEC p_insertClient @RestaurantID = @RestaurantID, 
+					@Phone = @Phone, @Email = @Email,@CityName = @CityName, 
+					@ZipCode = @ZipCode, @Street = @Street, @ClientID = @ClientID OUTPUT
+					INSERT INTO [Individual Clients](ClientID, Firstname, Lastname)
+						VALUES(@ClientID, @FirstName, @LastName);
+				end
+			ELSE
+				THROW 60000,'Restaurant does not exist!', 1;
+		COMMIT TRAN INSERT_IND
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN INSERT_IND
+		DECLARE @msg NVARCHAR(2048) = 
+		'Error while inserting an individual client! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 60000,@msg, 1;
+		END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_RemoveDishFromOrder]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_RemoveDishFromOrder]
+	@OrderID int,
+	@DishName varchar(50),
+	@Quantity int
+AS
+BEGIN
+	BEGIN TRY
+		BEGIN TRAN REMDISH
+			Declare @DishID int = dbo.f_GetDish(@DishName)
+			IF ((select DishID from [Orders Details] where OrderID = @OrderID and DishID = @DishID) = null)
+				THROW 51000, 'THIS DISH NOT EXISTS IN THAT ORDER', 1;
+			IF ((select Quantity from [Orders Details] where OrderID = @OrderID and DishID = @DishID) > @Quantity)
+				BEGIN
+					UPDATE [Orders Details]
+					SET Quantity = Quantity - @Quantity
+					WHERE OrderID = @OrderID and DishID = @DishID
+				END
+			ELSE
+				BEGIN
+					DELETE FROM [Orders Details]
+					WHERE OrderID = @OrderID and DishID = @DishID
+				END
+		COMMIT TRAN REMDISH
+    END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN REMDISH
+		DECLARE @msg NVARCHAR(2048) ='Error while adding dish to Order ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_RemoveFromMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+CREATE PROCEDURE [dbo].[p_RemoveFromMenu]
+		@RestaurantName varchar(50),
+		@DishName varchar(50)
+
+AS
+BEGIN
+	SET NOCOUNT ON;
+	BEGIN TRY
+			BEGIN TRAN FROM_MENU
+				DECLARE @DishID int = dbo.f_GetDish(@DishName)
+				DECLARE @RestaurantID int =  dbo.f_GetRestaurant(@RestaurantName)
+				Declare @Date date = getdate();
+				IF(@DishID is null)
+						THROW 51000, 'Dish does not exist!', 1;
+				ELSE IF(@RestaurantID is null)
+						Throw 51000, 'Restaurant does not exist', 1;
+				ELSE
+					BEGIN
+					IF EXISTS (SELECT * FROM Menu
+						WHERE DishID = @DishID and RestaurantID = @RestaurantID )	
+						BEGIN
+							DECLARE @InDate date = (Select InDate from [Menu]
+											Where DishID = @DishID and
+											RestaurantID = @RestaurantID)
+							DECLARE @OutDate date = (Select OutDate from [Menu]
+											Where DishID = @DishID and
+											RestaurantID = @RestaurantID)
+							IF(@InDate is not null and @OutDate is not null)
+								IF (DATEDIFF(DAY, @InDate, @Date)  >= 0 and DATEDIFF(DAY, @OutDate, @Date) <= 0)
+									BEGIN
+										UPDATE [Menu]
+										SET [OutDate] = @Date
+										Where DishID = @DishID and RestaurantID = @RestaurantID;
+									END
+								ELSE
+									THROW 60000, 'Dish is not in current menu!', 1;
+							ELSE
+								THROW 60000, 'Dish is not in current menu!', 1;
+						END
+					ELSE
+						THROW 60000, 'Dish is not in current menu!', 1;
+					END
+			Commit tran FROMMENU
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRAN FROMMENU
+		DECLARE @msg NVARCHAR(2048) ='Error while removing a dish from menu! ' + CHAR(13)+CHAR(10) + ERROR_MESSAGE();
+		THROW 52000,@msg, 1;
+	END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_RemoveNullFromMenu]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[p_RemoveNullFromMenu]
+
+AS
+BEGIN
+
+	DELETE M FROM MENU AS M
+	LEFT OUTER JOIN dbo.[DishPrice History] AS DHP
+	ON M.DishID = DHP.DishID AND M.RestaurantID = DHP.RestaurantID
+	WHERE DHP.Price IS NULL 
+END
+GO
+/****** Object:  StoredProcedure [dbo].[p_RemoveRepeated]    Script Date: 26.03.2021 12:45:56 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date,,>
+-- Description:	<Description,,>
+-- =============================================
+CREATE PROCEDURE [dbo].[p_RemoveRepeated] 
+	
+AS
+BEGIN
+	DELETE C FROM dbo.[Company Clients] AS C
+	INNER JOIN dbo.[Individual Clients] AS I
+	ON C.ClientID = I.ClientID
+	WHERE C.ClientID = I.ClientID
+
+END
+GO
+EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'' , @level0type=N'SCHEMA',@level0name=N'dbo', @level1type=N'TABLE',@level1name=N'Clients', @level2type=N'CONSTRAINT',@level2name=N'PK_Clients'
+GO
+USE [master]
+GO
+ALTER DATABASE [u_czerepak] SET  READ_WRITE 
+GO
